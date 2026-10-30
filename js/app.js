@@ -294,9 +294,12 @@
     if (p.nivel === 3) {
       var titulos = {};
       dados.programa.sessoes.forEach(function (s) {
-        s.pecas.forEach(function (x) { if (x.titulo) titulos[x.titulo] = true; });
-        if ((s.tipo === 'apresentacao' || s.tipo === 'conversa') && s.titulo) titulos[s.titulo] = true;
+        s.pecas.forEach(function (x) {
+          if (x.titulo) titulos[x.artistas ? x.titulo + (lang === 'pt' ? ', de ' : ', by ') + x.artistas : x.titulo] = true;
+        });
+        if (!s.pecas.length && (s.tipo === 'apresentacao' || s.tipo === 'conversa') && s.titulo) titulos[s.titulo] = true;
       });
+      if (rasc.peca_declarada) titulos[rasc.peca_declarada] = true;
       var sel = el('select', { id: 'f-peca' }, [el('option', { value: '', texto: t('pecaNenhuma') })]);
       Object.keys(titulos).sort().forEach(function (tt) { sel.appendChild(el('option', { value: tt, texto: tt })); });
       sel.value = rasc.peca_declarada || '';
