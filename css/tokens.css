@@ -1,0 +1,18 @@
+/* Identidade visual da futura */
+@font-face {
+  font-family: "Fustat";
+  src: url("../assets/fonts/Fustat-VariableFont_wght.ttf") format("truetype");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --fundo: #1F1822;      /* off-black */
+  --texto: #FFF8F0;      /* off-white */
+  --titulo: #EFF4CE;     /* verde pastel */
+  --destaque: #F05B75;   /* rosa */
+  --cinza: #594E5F;      /* só para bordas e cartões, nunca para texto */
+  --texto-suave: rgba(255, 248, 240, 0.72);
+  --fonte: "Fustat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
