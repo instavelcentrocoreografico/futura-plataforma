@@ -20,6 +20,8 @@ window.futuraApi = (function () {
 
   return {
     pedirAcesso: function (email, idioma) { return chamar('pedir_acesso', { email: email, idioma: idioma }); },
-    carregar: function (token) { return chamar('carregar', { token: token }); }
+    carregar: function (token) { return chamar('carregar', { token: token }); },
+    guardar: function (token, dados) { return chamar('guardar', Object.assign({ token: token }, dados)); },
+    cancelar: function (token) { return chamar('cancelar', { token: token }); }
   };
 })();
