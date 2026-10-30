@@ -293,7 +293,10 @@
 
     if (p.nivel === 3) {
       var titulos = {};
-      dados.programa.sessoes.forEach(function (s) { s.pecas.forEach(function (x) { if (x.titulo) titulos[x.titulo] = true; }); });
+      dados.programa.sessoes.forEach(function (s) {
+        s.pecas.forEach(function (x) { if (x.titulo) titulos[x.titulo] = true; });
+        if ((s.tipo === 'apresentacao' || s.tipo === 'conversa') && s.titulo) titulos[s.titulo] = true;
+      });
       var sel = el('select', { id: 'f-peca' }, [el('option', { value: '', texto: t('pecaNenhuma') })]);
       Object.keys(titulos).sort().forEach(function (tt) { sel.appendChild(el('option', { value: tt, texto: tt })); });
       sel.value = rasc.peca_declarada || '';
@@ -335,6 +338,8 @@
     var dias = [];
     dados.programa.sessoes.forEach(function (s) { if (dias.indexOf(s.dia) < 0) dias.push(s.dia); });
     dias.sort();
+    dias = dias.filter(function (d) { return !diaNao(d); });
+    if (diaFiltro && dias.indexOf(diaFiltro) < 0) diaFiltro = '';
     var barra = el('div', { classe: 'filtro', role: 'group', 'aria-label': t('filtroDia') });
     [''].concat(dias).forEach(function (d) {
       var b = el('button', { type: 'button', classe: 'chip' + (diaFiltro === d ? ' ativo' : ''), 'aria-pressed': diaFiltro === d ? 'true' : 'false', texto: d ? formatarDia(d) : (lang === 'pt' ? 'Todos' : 'All') });
@@ -348,9 +353,8 @@
   function painelProgramacao(painel) {
     painel.appendChild(el('h2', { texto: t('separadores').programacao }));
     var dias = filtroDias(painel);
-    dias.filter(function (d) { return !diaFiltro || d === diaFiltro; }).forEach(function (dia) {
+    dias.filter(function (d) { return !diaNao(d) && (!diaFiltro || d === diaFiltro); }).forEach(function (dia) {
       painel.appendChild(el('h3', { classe: 'dia', texto: formatarDia(dia) }));
-      if (diaNao(dia)) painel.appendChild(el('p', { classe: 'suave', texto: t('diaNaoMarcado') }));
       dados.programa.sessoes.filter(function (s) { return s.dia === dia; }).forEach(function (s) {
         painel.appendChild(desenharSessao(s));
       });
@@ -427,7 +431,7 @@
 
   function painelRefeicoes(painel) {
     painel.appendChild(el('h2', { texto: t('refeicoesTitulo') }));
-    var refeicoes = dados.programa.refeicoes.filter(function (r) { return r.acesso; });
+    var refeicoes = dados.programa.refeicoes.filter(function (r) { return r.acesso && !diaNao(r.dia); });
     if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoes') })); return; }
     painel.appendChild(el('p', { classe: 'suave', texto: t('refeicoesNota') }));
     refeicoes.forEach(function (r) {
@@ -501,7 +505,7 @@
     var rotulo = el('label', { classe: 'opcao', 'for': 'f-rgpd' }, [cx, texto]);
     var url = dados.config && dados.config.url_privacidade;
     if (urlSegura(url)) texto.appendChild(el('a', { href: url.trim(), target: '_blank', rel: 'noopener noreferrer', texto: t('politica') }));
-    painel.appendChild(el('div', { classe: 'cartao' }, [rotulo]));
+    painel.appendChild(el('div', { classe: 'cartao' }, [el('h3', { texto: t('rgpdTitulo') }), rotulo]));
 
     var estado = el('p', { id: 'estado-guardar', role: 'status', 'aria-live': 'polite', classe: 'suave',
       texto: inscrito() ? (alterado() ? t('alteracoesPorGuardar') : t('semAlteracoes')) : '' });
