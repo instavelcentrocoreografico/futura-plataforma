@@ -239,7 +239,7 @@
     pessoa_nao_encontrada: 'Pessoa não encontrada. Atualize a página.', nada_a_validar: 'Esta pessoa já não está por validar.',
     sem_alteracao: 'Já estava assim. Nada foi alterado.', sem_inscricao: 'Esta pessoa não tem inscrição ativa.',
     ja_existe: 'Já existe uma pessoa com este email.', email_invalido: 'O email não parece válido.', nome_invalido: 'Falta o nome.',
-    nivel_invalido: 'Escolha um nível.', estado_invalido: 'Estado inválido.', interno: 'Algo correu mal. Tente outra vez.'
+    nivel_invalido: 'Escolha um nível.', email_nao_coincide: 'O email escrito não coincide com o desta pessoa.', tem_inscricao_ativa: 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.', estado_invalido: 'Estado inválido.', interno: 'Algo correu mal. Tente outra vez.'
   };
 
   // Pede confirmação no próprio sítio (dois passos) e só depois faz a ação.
@@ -311,6 +311,30 @@
               function () { return executar(ctx, 'cancelar_inscricao', { pessoa_id: x.id }, x.nome + ': inscrição cancelada.'); });
           } }, 'Cancelar inscrição'), cc]));
       }
+    }
+    if (admin) {
+      var ce = el('div');
+      secoes.push(el('div', { class: 'acao-bloco' }, [
+        el('button', { type: 'button', class: 'botao-texto perigo', onclick: function () {
+          if (x.inscricao === 'confirmada') { limpar(ce); ce.appendChild(el('p', { class: 'erro' }, 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.')); return; }
+          var campoEmail = el('input', { type: 'text', 'aria-label': 'Escreva o email para confirmar', placeholder: x.email, autocomplete: 'off' });
+          var mensagem = el('p', { class: 'erro', role: 'alert' });
+          var sim = el('button', { type: 'button', class: 'botao' }, 'Eliminar para sempre');
+          var nao = el('button', { type: 'button', class: 'botao-texto', onclick: function () { limpar(ce); } }, 'Voltar');
+          sim.addEventListener('click', function () {
+            sim.disabled = true; sim.textContent = 'A eliminar…'; nao.disabled = true;
+            executar(ctx, 'eliminar_pessoa', { pessoa_id: x.id, email_confirmacao: campoEmail.value }, x.nome + ' eliminada.').then(function (r) {
+              if (r && r.ok) return;
+              sim.disabled = false; sim.textContent = 'Eliminar para sempre'; nao.disabled = false;
+              mensagem.textContent = ERROS_ACAO[r && r.erro] || 'Não foi possível eliminar.';
+            }).catch(function () { sim.disabled = false; sim.textContent = 'Eliminar para sempre'; nao.disabled = false; mensagem.textContent = 'Sem ligação. Nada foi alterado.'; });
+          });
+          limpar(ce);
+          ce.appendChild(el('div', { class: 'confirmar' }, [
+            el('p', {}, 'Eliminar ' + x.nome + ' e tudo o que é dela (alojamento, inscrições, acessos). Não se desfaz. Se a pessoa respondeu ao formulário inicial, a resposta continua na aba pre_inscricao e na folha de respostas; apague-a aí também se for um pedido de eliminação de dados.'),
+            el('label', {}, 'Para confirmar, escreva o email: ' + x.email), campoEmail,
+            el('div', { class: 'acoes' }, [sim, nao]), mensagem]));
+        } }, 'Eliminar pessoa'), ce]));
     }
     if (!secoes.length) secoes.push(el('p', { class: 'suave' }, 'Não há ações disponíveis para esta pessoa com o seu papel.'));
 
