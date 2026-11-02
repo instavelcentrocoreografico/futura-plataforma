@@ -542,9 +542,9 @@
 
     painel.appendChild(selecionar('al-tipo', t('alojTipo'),
       [['individual', t('alojIndividual')], ['duplo', t('alojDuplo')]], aj.tipo_quarto, function (v) { aj.tipo_quarto = v; redesenhar('al-tipo'); }, !ed));
-    var datas = a.datas.map(function (d) { return [d, formatarDataCurta(d)]; });
-    painel.appendChild(selecionar('al-in', t('alojEntrada'), [['', '—']].concat(datas), aj.checkin, function (v) { aj.checkin = v; redesenhar('al-in'); }, !ed));
-    painel.appendChild(selecionar('al-out', t('alojSaida'), [['', '—']].concat(datas), aj.checkout, function (v) { aj.checkout = v; redesenhar('al-out'); }, !ed));
+    var fmt = function (d) { return [d, formatarDataCurta(d)]; };
+    painel.appendChild(selecionar('al-in', t('alojEntrada'), [['', '—']].concat(a.datas_entrada.map(fmt)), aj.checkin, function (v) { aj.checkin = v; redesenhar('al-in'); }, !ed));
+    painel.appendChild(selecionar('al-out', t('alojSaida'), [['', '—']].concat(a.datas_saida.map(fmt)), aj.checkout, function (v) { aj.checkout = v; redesenhar('al-out'); }, !ed));
 
     if (aj.tipo_quarto === 'duplo') {
       painel.appendChild(el('p', { classe: 'suave', texto: t('alojSegundaNota') }));
