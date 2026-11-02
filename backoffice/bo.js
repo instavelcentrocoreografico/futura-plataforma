@@ -6,6 +6,7 @@
   var raiz = document.getElementById('conteudo');
   var topoConta = document.getElementById('topo-conta');
   var token = '';
+  window.__boToken = function () { return token; };
 
   function el(tag, atributos, filhos) {
     var n = document.createElement(tag);
@@ -74,8 +75,10 @@
     var cab = el('tr', {}, cabecalho.map(function (c, i) { return el('th', { class: numericas.indexOf(i) > -1 ? 'num' : '' }, c); }));
     var corpo = linhas.map(function (l) {
       return el('tr', {}, l.map(function (c, i) {
+        var classe = (numericas.indexOf(i) > -1 ? 'num ' : '') + (c && c.classe ? c.classe : '');
+        if (c && c.no) return el('td', { class: classe }, c.no);
         var texto = c && c.texto !== undefined ? c.texto : c;
-        return el('td', { class: (numericas.indexOf(i) > -1 ? 'num ' : '') + (c && c.classe ? c.classe : '') }, texto === null || texto === undefined ? '' : String(texto));
+        return el('td', { class: classe }, texto === null || texto === undefined ? '' : String(texto));
       }));
     });
     return el('div', { class: 'tabela-caixa' }, [el('table', {}, [el('thead', {}, cab), el('tbody', {}, corpo)])]);
@@ -106,7 +109,22 @@
       { id: 'alojamento', nome: 'Alojamento', corpo: el('div') }
     ];
     var barra = el('div', { class: 'separadores', role: 'tablist' });
+    var avisoEl = el('p', { class: 'sucesso', role: 'status' });
     var listas = null, aCarregarListas = false;
+    var ctxAcoes = { papel: dados.equipa.papel, aoAlterar: recarregar };
+    function recarregar(mensagem) {
+      var visivel = abas.filter(function (a) { return !a.corpo.hidden; })[0];
+      Promise.all([window.futuraApi.boCarregar(token), window.futuraApi.boListas(token)]).then(function (res) {
+        if (!res[0].ok || !res[1].ok) { esquecer(); token = ''; ecraLogin('A sessão terminou. Peça um novo link.'); return; }
+        dados.resumo = res[0].resumo; dados.gerado_em = res[0].gerado_em; listas = res[1];
+        limpar(abas[0].corpo); desenharGeral(abas[0].corpo, dados);
+        desenharListas(abas, listas, ctxAcoes);
+        avisoEl.className = 'sucesso'; avisoEl.textContent = mensagem || '';
+        mostrar(visivel ? visivel.id : 'geral');
+      }).catch(function () {
+        avisoEl.className = 'erro'; avisoEl.textContent = 'A alteração foi feita, mas não consegui atualizar as listas. Carregue em Atualizar.';
+      });
+    }
     function mostrar(id) {
       abas.forEach(function (a) { a.botao.className = 'separador' + (a.id === id ? ' ativo' : ''); a.corpo.hidden = a.id !== id; });
       if (id !== 'geral' && !listas && !aCarregarListas) carregarListas();
@@ -121,7 +139,7 @@
         aCarregarListas = false;
         if (!r || !r.ok) { esquecer(); token = ''; ecraLogin('A sessão terminou. Peça um novo link.'); return; }
         listas = r;
-        desenharListas(abas, r);
+        desenharListas(abas, r, ctxAcoes);
       }).catch(function () {
         aCarregarListas = false;
         abas.slice(1).forEach(function (a) {
@@ -135,6 +153,7 @@
       a.botao = el('button', { type: 'button', class: 'separador', role: 'tab', onclick: function () { mostrar(a.id); } }, a.nome);
       barra.appendChild(a.botao);
     });
+    raiz.appendChild(avisoEl);
     raiz.appendChild(barra);
     abas.forEach(function (a) { raiz.appendChild(a.corpo); });
     desenharGeral(abas[0].corpo, dados);
@@ -207,17 +226,124 @@
     return el('button', { type: 'button', class: 'botao-texto', onclick: function () { descarregarCsv(nome, cabecalho, obterLinhas()); } }, 'Descarregar CSV');
   }
 
-  function desenharListas(abas, d) {
-    desenharPessoas(abas[1].corpo, d.pessoas);
+  function desenharListas(abas, d, ctx) {
+    desenharPessoas(abas[1].corpo, d.pessoas, ctx);
     desenharSessoes(abas[2].corpo, d.sessoes);
     desenharAlojamento(abas[3].corpo, d.alojamento);
+  }
+
+
+  /* ---------- ações (editor: validar; admin: tudo) ---------- */
+  var ERROS_ACAO = {
+    sem_permissao: 'Não tem permissão para esta ação.', link_invalido: 'A sessão terminou. Peça um novo link.',
+    pessoa_nao_encontrada: 'Pessoa não encontrada. Atualize a página.', nada_a_validar: 'Esta pessoa já não está por validar.',
+    sem_alteracao: 'Já estava assim. Nada foi alterado.', sem_inscricao: 'Esta pessoa não tem inscrição ativa.',
+    ja_existe: 'Já existe uma pessoa com este email.', email_invalido: 'O email não parece válido.', nome_invalido: 'Falta o nome.',
+    nivel_invalido: 'Escolha um nível.', estado_invalido: 'Estado inválido.', interno: 'Algo correu mal. Tente outra vez.'
+  };
+
+  // Pede confirmação no próprio sítio (dois passos) e só depois faz a ação.
+  function comConfirmacao(caixa, texto, fazer) {
+    limpar(caixa);
+    var msg = el('p', { class: 'erro', role: 'alert' }, '');
+    var sim = el('button', { type: 'button', class: 'botao' }, 'Confirmar');
+    var nao = el('button', { type: 'button', class: 'botao-texto' }, 'Voltar');
+    nao.addEventListener('click', function () { limpar(caixa); });
+    sim.addEventListener('click', function () {
+      sim.disabled = true; sim.textContent = 'A guardar…'; nao.disabled = true;
+      fazer().then(function (r) {
+        if (r && r.ok) return;
+        sim.disabled = false; sim.textContent = 'Confirmar'; nao.disabled = false;
+        msg.textContent = ERROS_ACAO[r && r.erro] || 'Não foi possível guardar.';
+      }).catch(function () {
+        sim.disabled = false; sim.textContent = 'Confirmar'; nao.disabled = false;
+        msg.textContent = 'Sem ligação. Nada foi alterado. Tente outra vez.';
+      });
+    });
+    caixa.appendChild(el('div', { class: 'confirmar' }, [el('p', {}, texto), el('div', { class: 'acoes' }, [sim, nao]), msg]));
+  }
+
+  function executar(ctx, tipo, dados, mensagem) {
+    return window.futuraApi.boAcao(window.__boToken(), tipo, dados).then(function (r) {
+      if (r && r.ok) ctx.aoAlterar(mensagem);
+      return r;
+    });
+  }
+
+  function painelPessoa(x, ctx, fechar) {
+    var admin = ctx.papel === 'admin';
+    var caixa = el('div');
+    var secoes = [];
+    var NIV = { 1: 'Nível 1', 2: 'Nível 2', 3: 'Nível 3' };
+
+    if (x.estado_validacao === 'por_validar') {
+      var cv = el('div');
+      secoes.push(el('div', { class: 'acao-bloco' }, [
+        el('p', {}, 'Peça declarada: ' + (x.peca_declarada || '(não indicada)') + '. Confirma que esta pessoa faz parte dessa peça?'),
+        el('button', { type: 'button', class: 'botao', onclick: function () {
+          comConfirmacao(cv, 'Validar ' + x.nome + ' como pertencente a "' + x.peca_declarada + '"?', function () { return executar(ctx, 'validar', { pessoa_id: x.id }, x.nome + ': validada.'); });
+        } }, 'Validar'), cv]));
+    }
+    if (admin) {
+      var selNivel = el('select', { 'aria-label': 'Nível' }, [1, 2, 3].map(function (n) { var o = el('option', { value: String(n) }, NIV[n]); if (n === x.nivel) o.selected = true; return o; }));
+      var cn = el('div');
+      secoes.push(el('div', { class: 'acao-bloco' }, [el('label', {}, 'Nível'), el('div', { class: 'acoes' }, [selNivel,
+        el('button', { type: 'button', class: 'botao-texto', onclick: function () {
+          var n = Number(selNivel.value); if (n === x.nivel) { limpar(cn); cn.appendChild(el('p', { class: 'suave' }, 'Já está neste nível.')); return; }
+          comConfirmacao(cn, 'Mudar ' + x.nome + ' de ' + NIV[x.nivel] + ' para ' + NIV[n] + '? Isto muda quando pode inscrever-se e o que lhe é permitido.', function () { return executar(ctx, 'mudar_nivel', { pessoa_id: x.id, nivel: n }, x.nome + ': ' + NIV[n] + '.'); });
+        } }, 'Mudar nível')]), cn]));
+
+      var estados = ['pedido', 'oferecido', 'autorizado', 'nao_autorizado', 'nao_necessita', 'a_avaliar', 'caso_especial', 'por_classificar'];
+      var selAloj = el('select', { 'aria-label': 'Estado do alojamento' }, [el('option', { value: '' }, 'Escolher estado…')].concat(estados.map(function (e) { return el('option', { value: e }, NOMES_ESTADO[e]); })));
+      var ca = el('div');
+      secoes.push(el('div', { class: 'acao-bloco' }, [el('label', {}, 'Estado do alojamento'), el('div', { class: 'acoes' }, [selAloj,
+        el('button', { type: 'button', class: 'botao-texto', onclick: function () {
+          if (!selAloj.value) return;
+          comConfirmacao(ca, 'Mudar o alojamento de ' + x.nome + ' para "' + NOMES_ESTADO[selAloj.value] + '"?' + (selAloj.value === 'nao_autorizado' ? ' A pessoa deixa de poder pedir ou alterar alojamento.' : ''),
+            function () { return executar(ctx, 'alojamento_estado', { pessoa_id: x.id, estado: selAloj.value }, x.nome + ': alojamento "' + NOMES_ESTADO[selAloj.value] + '".'); });
+        } }, 'Guardar')]), ca]));
+
+      if (x.inscricao === 'confirmada') {
+        var cc = el('div');
+        secoes.push(el('div', { class: 'acao-bloco' }, [
+          el('button', { type: 'button', class: 'botao-texto perigo', onclick: function () {
+            comConfirmacao(cc, 'Cancelar TODA a inscrição de ' + x.nome + '? Liberta os lugares (a lista de espera avança), cancela refeições e alojamento, e a pessoa recebe um email de cancelamento. Não se desfaz.',
+              function () { return executar(ctx, 'cancelar_inscricao', { pessoa_id: x.id }, x.nome + ': inscrição cancelada.'); });
+          } }, 'Cancelar inscrição'), cc]));
+      }
+    }
+    if (!secoes.length) secoes.push(el('p', { class: 'suave' }, 'Não há ações disponíveis para esta pessoa com o seu papel.'));
+
+    caixa.appendChild(el('div', { class: 'cartao' }, [
+      el('div', { class: 'acoes-lista' }, [el('h2', { style: 'margin:0' }, x.nome), el('button', { type: 'button', class: 'botao-texto', onclick: fechar }, 'Fechar')]),
+      el('p', { class: 'suave' }, [x.email, x.instituicao ? ' · ' + x.instituicao : '', ' · ' + NIV[x.nivel], ' · inscrição: ' + (ESTADO_INSC[x.inscricao] || x.inscricao)].join('')),
+      el('div', {}, secoes)]));
+    return caixa;
+  }
+
+  function formNovaPessoa(ctx, fechar) {
+    var nome = el('input', { type: 'text', id: 'np-nome', 'aria-label': 'Nome completo' });
+    var email = el('input', { type: 'email', id: 'np-email', 'aria-label': 'Email' });
+    var inst = el('input', { type: 'text', id: 'np-inst', 'aria-label': 'Instituição' });
+    var nivel = el('select', { id: 'np-nivel', 'aria-label': 'Nível' }, [el('option', { value: '' }, 'Escolher nível…'), el('option', { value: '1' }, 'Nível 1'), el('option', { value: '2' }, 'Nível 2'), el('option', { value: '3' }, 'Nível 3')]);
+    var cx = el('div');
+    var campo = function (t, c) { return el('div', { class: 'campo' }, [el('label', {}, t), c]); };
+    return el('div', { class: 'cartao' }, [
+      el('div', { class: 'acoes-lista' }, [el('h2', { style: 'margin:0' }, 'Acrescentar pessoa'), el('button', { type: 'button', class: 'botao-texto', onclick: fechar }, 'Fechar')]),
+      campo('Nome completo', nome), campo('Email', email), campo('Instituição (opcional)', inst), campo('Nível', nivel),
+      el('button', { type: 'button', class: 'botao', onclick: function () {
+        if (!nome.value.trim() || !email.value.trim() || !nivel.value) { limpar(cx); cx.appendChild(el('p', { class: 'erro' }, 'Preencha nome, email e nível.')); return; }
+        comConfirmacao(cx, 'Acrescentar ' + nome.value.trim() + ' (' + email.value.trim() + ') como nível ' + nivel.value + '?',
+          function () { return executar(ctx, 'acrescentar_pessoa', { nome: nome.value, email: email.value, instituicao: inst.value, nivel: Number(nivel.value) }, nome.value.trim() + ' acrescentada.'); });
+      } }, 'Continuar'), cx]);
   }
 
   var ESTADO_INSC = { confirmada: 'Inscrita', cancelada: 'Cancelada', '': '—' };
   var ESTADO_VAL = { ok: '', por_validar: 'Por validar', por_classificar: 'Por classificar' };
 
-  function desenharPessoas(corpo, pessoas) {
+  function desenharPessoas(corpo, pessoas, ctx) {
     limpar(corpo);
+    var painel = el('div');
     var filtro = { texto: '', nivel: 0, so: false };
     var busca = el('input', { type: 'text', placeholder: 'Procurar por nome, email ou instituição', 'aria-label': 'Procurar' });
     var contagem = el('p', { class: 'nota-atualizado' });
@@ -246,14 +372,26 @@
       }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
       contagem.textContent = visiveis.length + ' de ' + pessoas.length + ' pessoas';
       limpar(caixa);
-      caixa.appendChild(tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Inscrição', 'Dias', 'Sessões', 'Notas'], visiveis.map(function (x) {
+      caixa.appendChild(tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Inscrição', 'Dias', 'Sessões', 'Notas', ''], visiveis.map(function (x) {
         var notas = [ESTADO_VAL[x.estado_validacao] || x.estado_validacao, x.peca_declarada ? 'Peça: ' + x.peca_declarada : '',
           x.restricoes ? 'Alimentação: ' + x.restricoes : '', x.necessidades ? 'Necessidades: ' + x.necessidades : ''].filter(Boolean).join(' · ');
-        return [x.nome, x.email, x.instituicao, x.nivel, ESTADO_INSC[x.inscricao] || x.inscricao, x.dias, x.sessoes, notas];
+        var abrir = el('button', { type: 'button', class: 'botao-texto', 'aria-label': 'Ações para ' + x.nome, onclick: function () { abrirPainel(x); } }, 'Ações');
+        return [x.nome, x.email, x.instituicao, x.nivel, ESTADO_INSC[x.inscricao] || x.inscricao, x.dias, x.sessoes, notas, { no: abrir }];
       }), [3, 6]));
+    }
+    function abrirPainel(x) {
+      limpar(painel);
+      painel.appendChild(painelPessoa(x, ctx, function () { limpar(painel); }));
+      painel.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
     busca.addEventListener('input', function () { filtro.texto = busca.value; desenhar(); });
     corpo.appendChild(el('h1', {}, 'Pessoas'));
+    if (ctx.papel === 'admin') {
+      corpo.appendChild(el('button', { type: 'button', class: 'botao-texto', onclick: function () {
+        limpar(painel); painel.appendChild(formNovaPessoa(ctx, function () { limpar(painel); })); painel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } }, 'Acrescentar pessoa'));
+    }
+    corpo.appendChild(painel);
     corpo.appendChild(busca);
     corpo.appendChild(chips);
     corpo.appendChild(el('div', { class: 'acoes-lista' }, [contagem, botaoCsv('futura_pessoas.csv',

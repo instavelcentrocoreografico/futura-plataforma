@@ -20,3 +20,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .acoes-lista p { margin: 0; }
 .bo input[type="text"] { max-width: 520px; }
 [hidden] { display: none !important; }
+
+.acao-bloco { border-top: 1px solid var(--cinza); padding: 14px 0 6px; }
+.acao-bloco select { max-width: 320px; }
+.acao-bloco .acoes { margin-top: 0; }
+.confirmar { border: 1px solid var(--destaque); border-radius: 12px; padding: 12px 16px; margin: 12px 0; }
+.confirmar p:first-child { margin-bottom: 8px; }
+.botao-texto.perigo { border-color: var(--destaque); color: var(--destaque); }
