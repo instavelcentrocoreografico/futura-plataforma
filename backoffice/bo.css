@@ -15,3 +15,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cheio { color: var(--destaque); font-weight: 600; }
 .nota-atualizado { color: var(--texto-suave); font-size: 0.85rem; }
 .login { max-width: 460px; }
+
+.acoes-lista { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.acoes-lista p { margin: 0; }
+.bo input[type="text"] { max-width: 520px; }
+[hidden] { display: none !important; }

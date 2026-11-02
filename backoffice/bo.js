@@ -90,9 +90,7 @@
   };
 
   function ecraPainel(dados) {
-    var r = dados.resumo, p = r.pessoas;
     limpar(raiz); limpar(topoConta);
-
     topoConta.appendChild(el('span', {}, dados.equipa.nome || dados.equipa.email));
     topoConta.appendChild(el('span', { class: 'etiqueta' }, dados.equipa.papel));
     topoConta.appendChild(el('button', { type: 'button', class: 'botao-texto', onclick: function () { carregar(true); } }, 'Atualizar'));
@@ -101,6 +99,50 @@
       onclick: function () { esquecer(); token = ''; ecraLogin(); }
     }, 'Sair'));
 
+    var abas = [
+      { id: 'geral', nome: 'Visão geral', corpo: el('div') },
+      { id: 'pessoas', nome: 'Pessoas', corpo: el('div') },
+      { id: 'sessoes', nome: 'Sessões', corpo: el('div') },
+      { id: 'alojamento', nome: 'Alojamento', corpo: el('div') }
+    ];
+    var barra = el('div', { class: 'separadores', role: 'tablist' });
+    var listas = null, aCarregarListas = false;
+    function mostrar(id) {
+      abas.forEach(function (a) { a.botao.className = 'separador' + (a.id === id ? ' ativo' : ''); a.corpo.hidden = a.id !== id; });
+      if (id !== 'geral' && !listas && !aCarregarListas) carregarListas();
+    }
+    function carregarListas() {
+      aCarregarListas = true;
+      ['pessoas', 'sessoes', 'alojamento'].forEach(function (i) {
+        var a = abas.filter(function (x) { return x.id === i; })[0];
+        limpar(a.corpo); a.corpo.appendChild(el('p', { class: 'suave' }, 'A carregar a lista…'));
+      });
+      window.futuraApi.boListas(token).then(function (r) {
+        aCarregarListas = false;
+        if (!r || !r.ok) { esquecer(); token = ''; ecraLogin('A sessão terminou. Peça um novo link.'); return; }
+        listas = r;
+        desenharListas(abas, r);
+      }).catch(function () {
+        aCarregarListas = false;
+        abas.slice(1).forEach(function (a) {
+          limpar(a.corpo);
+          a.corpo.appendChild(el('p', { class: 'erro' }, 'Não foi possível carregar. Verifique a internet.'));
+          a.corpo.appendChild(el('button', { type: 'button', class: 'botao', onclick: carregarListas }, 'Tentar outra vez'));
+        });
+      });
+    }
+    abas.forEach(function (a) {
+      a.botao = el('button', { type: 'button', class: 'separador', role: 'tab', onclick: function () { mostrar(a.id); } }, a.nome);
+      barra.appendChild(a.botao);
+    });
+    raiz.appendChild(barra);
+    abas.forEach(function (a) { raiz.appendChild(a.corpo); });
+    desenharGeral(abas[0].corpo, dados);
+    mostrar('geral');
+  }
+
+  function desenharGeral(raiz, dados) {
+    var r = dados.resumo, p = r.pessoas;
     raiz.appendChild(el('h1', {}, 'Visão geral'));
     raiz.appendChild(el('p', { class: 'nota-atualizado' }, 'Atualizado às ' + new Date(dados.gerado_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) + ' · só consulta'));
 
@@ -144,6 +186,124 @@
 
     raiz.appendChild(el('h2', {}, 'Refeições'));
     raiz.appendChild(tabela(['Dia', 'Refeição', 'Inscritos'], r.refeicoes.map(function (x) { return [dia(x.dia), x.tipo, x.inscritos]; }), [2]));
+  }
+
+  /* ---------- listas ---------- */
+  function semAcentos(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+  // CSV para abrir no Excel (UTF-8 com BOM, separador ponto e vírgula). Células que começam por = + - @ levam um apóstrofo.
+  function descarregarCsv(nome, cabecalho, linhas) {
+    function cel(v) {
+      var t = v === null || v === undefined ? '' : String(v);
+      if (/^[=+\-@]/.test(t)) t = "'" + t;
+      return '"' + t.replace(/"/g, '""') + '"';
+    }
+    var texto = [cabecalho].concat(linhas).map(function (l) { return l.map(cel).join(';'); }).join('\r\n');
+    var blob = new Blob(['\ufeff' + texto], { type: 'text/csv;charset=utf-8' });
+    var a = el('a', { href: URL.createObjectURL(blob), download: nome });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  function botaoCsv(nome, cabecalho, obterLinhas) {
+    return el('button', { type: 'button', class: 'botao-texto', onclick: function () { descarregarCsv(nome, cabecalho, obterLinhas()); } }, 'Descarregar CSV');
+  }
+
+  function desenharListas(abas, d) {
+    desenharPessoas(abas[1].corpo, d.pessoas);
+    desenharSessoes(abas[2].corpo, d.sessoes);
+    desenharAlojamento(abas[3].corpo, d.alojamento);
+  }
+
+  var ESTADO_INSC = { confirmada: 'Inscrita', cancelada: 'Cancelada', '': '—' };
+  var ESTADO_VAL = { ok: '', por_validar: 'Por validar', por_classificar: 'Por classificar' };
+
+  function desenharPessoas(corpo, pessoas) {
+    limpar(corpo);
+    var filtro = { texto: '', nivel: 0, so: false };
+    var busca = el('input', { type: 'text', placeholder: 'Procurar por nome, email ou instituição', 'aria-label': 'Procurar' });
+    var contagem = el('p', { class: 'nota-atualizado' });
+    var caixa = el('div');
+    var visiveis = [];
+    function chip(texto, fn, ativo) {
+      var c = el('button', { type: 'button', class: 'chip' + (ativo ? ' ativo' : '') }, texto);
+      c.addEventListener('click', function () { fn(); desenhar(); });
+      return c;
+    }
+    var chips = el('div', { class: 'filtro' });
+    function desenharChips() {
+      limpar(chips);
+      [[0, 'Todos'], [1, 'Nível 1'], [2, 'Nível 2'], [3, 'Nível 3']].forEach(function (n) {
+        chips.appendChild(chip(n[1], function () { filtro.nivel = n[0]; }, filtro.nivel === n[0]));
+      });
+      chips.appendChild(chip('Só inscritas', function () { filtro.so = !filtro.so; }, filtro.so));
+    }
+    function desenhar() {
+      desenharChips();
+      var t = semAcentos(filtro.texto);
+      visiveis = pessoas.filter(function (x) {
+        if (filtro.nivel && x.nivel !== filtro.nivel) return false;
+        if (filtro.so && x.inscricao !== 'confirmada') return false;
+        return !t || semAcentos(x.nome + ' ' + x.email + ' ' + x.instituicao).indexOf(t) > -1;
+      }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
+      contagem.textContent = visiveis.length + ' de ' + pessoas.length + ' pessoas';
+      limpar(caixa);
+      caixa.appendChild(tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Inscrição', 'Dias', 'Sessões', 'Notas'], visiveis.map(function (x) {
+        var notas = [ESTADO_VAL[x.estado_validacao] || x.estado_validacao, x.peca_declarada ? 'Peça: ' + x.peca_declarada : '',
+          x.restricoes ? 'Alimentação: ' + x.restricoes : '', x.necessidades ? 'Necessidades: ' + x.necessidades : ''].filter(Boolean).join(' · ');
+        return [x.nome, x.email, x.instituicao, x.nivel, ESTADO_INSC[x.inscricao] || x.inscricao, x.dias, x.sessoes, notas];
+      }), [3, 6]));
+    }
+    busca.addEventListener('input', function () { filtro.texto = busca.value; desenhar(); });
+    corpo.appendChild(el('h1', {}, 'Pessoas'));
+    corpo.appendChild(busca);
+    corpo.appendChild(chips);
+    corpo.appendChild(el('div', { class: 'acoes-lista' }, [contagem, botaoCsv('futura_pessoas.csv',
+      ['Nome', 'Email', 'Instituição', 'Nível', 'Origem', 'Inscrição', 'Dias', 'Sessões', 'Validação', 'Peça declarada', 'Restrições alimentares', 'Necessidades'],
+      function () { return visiveis.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.origem, x.inscricao, x.dias, x.sessoes, x.estado_validacao, x.peca_declarada, x.restricoes, x.necessidades]; }); })]));
+    corpo.appendChild(caixa);
+    desenhar();
+  }
+
+  function desenharSessoes(corpo, sessoes) {
+    limpar(corpo);
+    corpo.appendChild(el('h1', {}, 'Sessões'));
+    var seletor = el('select', { 'aria-label': 'Escolher sessão' }, sessoes.map(function (s, i) {
+      return el('option', { value: String(i) }, dia(s.dia) + ' ' + s.inicio + ' · ' + s.titulo + ' (' + s.confirmados.length + (s.espera.length ? ' + ' + s.espera.length + ' em espera' : '') + ')');
+    }));
+    var caixa = el('div');
+    function desenhar() {
+      var s = sessoes[Number(seletor.value)]; limpar(caixa);
+      if (!s) { caixa.appendChild(el('p', { class: 'suave' }, 'Sem sessões com inscrição.')); return; }
+      caixa.appendChild(el('p', { class: 'suave' }, s.sala + ' · ' + (s.lotacao === null ? 'sem limite de lugares' : s.lotacao + ' lugares') + ' · ' + s.confirmados.length + ' confirmados'));
+      caixa.appendChild(el('div', { class: 'acoes-lista' }, [
+        el('span'), botaoCsv('futura_' + s.id + '.csv', ['Estado', 'Posição', 'Nome', 'Email', 'Instituição', 'Nível'],
+          function () { return s.confirmados.map(function (x) { return ['Confirmado', '', x.nome, x.email, x.instituicao, x.nivel]; })
+            .concat(s.espera.map(function (x) { return ['Em espera', x.posicao, x.nome, x.email, x.instituicao, x.nivel]; })); })]));
+      caixa.appendChild(el('h2', {}, 'Confirmados (' + s.confirmados.length + ')'));
+      caixa.appendChild(s.confirmados.length ? tabela(['Nome', 'Email', 'Instituição', 'Nível'], s.confirmados.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); })
+        .map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel]; }), [3]) : el('p', { class: 'suave' }, 'Ainda ninguém.'));
+      caixa.appendChild(el('h2', {}, 'Lista de espera (' + s.espera.length + ')'));
+      caixa.appendChild(s.espera.length ? tabela(['Posição', 'Nome', 'Email', 'Instituição', 'Nível', 'Pedido em'], s.espera
+        .map(function (x) { return [x.posicao, x.nome, x.email, x.instituicao, x.nivel, x.pedido_em]; }), [0, 4]) : el('p', { class: 'suave' }, 'Ninguém em espera.'));
+    }
+    seletor.addEventListener('change', desenhar);
+    corpo.appendChild(seletor); corpo.appendChild(caixa);
+    desenhar();
+  }
+
+  function desenharAlojamento(corpo, lista) {
+    limpar(corpo);
+    corpo.appendChild(el('h1', {}, 'Alojamento'));
+    var ordenada = lista.slice().sort(function (a, b) { return (b.pedido_submetido - a.pedido_submetido) || a.nome.localeCompare(b.nome, 'pt'); });
+    var euros = function (n) { return n ? n.toFixed(2).replace('.', ',') + ' €' : ''; };
+    corpo.appendChild(el('div', { class: 'acoes-lista' }, [
+      el('p', { class: 'nota-atualizado' }, ordenada.length + ' pessoas com estado ou pedido de alojamento'),
+      botaoCsv('futura_alojamento.csv', ['Nome', 'Email', 'Instituição', 'Nível', 'Estado', 'Pedido submetido', 'Viagem oferecida', 'Quarto', 'Partilha com', 'Entrada', 'Saída', 'Noites', 'Excedente', 'Taxa turística', 'Total', 'Pago', 'Notas'],
+        function () { return ordenada.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.estado, x.pedido_submetido ? 'sim' : 'não', x.viagem_oferecida, x.tipo_quarto, x.partilha_com, x.checkin, x.checkout, x.noites, x.excedente, x.taxa, x.total, x.pago, x.notas]; }); })
+    ]));
+    corpo.appendChild(tabela(['Nome', 'Instituição', 'Estado', 'Quarto', 'Entrada', 'Saída', 'Noites', 'Total', 'Pago', 'Notas'], ordenada.map(function (x) {
+      return [x.nome, x.instituicao, (NOMES_ESTADO[x.estado] || x.estado) + (x.pedido_submetido ? ' · pedido feito' : ''),
+        x.tipo_quarto + (x.partilha_com ? ' (com ' + x.partilha_com + ')' : ''), x.checkin, x.checkout, x.noites || '', euros(x.total), x.pago, x.notas];
+    }), [6, 7]));
   }
 
   /* ---------- arranque ---------- */

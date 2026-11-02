@@ -24,6 +24,7 @@ window.futuraApi = (function () {
     guardar: function (token, dados) { return chamar('guardar', Object.assign({ token: token }, dados)); },
     cancelar: function (token) { return chamar('cancelar', { token: token }); },
     boPedirAcesso: function (email) { return chamar('bo_pedir_acesso', { email: email }); },
-    boCarregar: function (token) { return chamar('bo_carregar', { token: token }); }
+    boCarregar: function (token) { return chamar('bo_carregar', { token: token }); },
+    boListas: function (token) { return chamar('bo_listas', { token: token }); }
   };
 })();
