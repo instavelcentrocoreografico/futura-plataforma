@@ -151,7 +151,11 @@
 
   /* ---------- área da pessoa: separadores ---------- */
 
-  var ORDEM = ['presenca', 'programacao', 'refeicoes', 'resumo'];
+  function ordem() {
+    var a = dados && dados.alojamento;
+    var comAloj = a && (a.disponivel !== 'nao' || a.pedido);
+    return comAloj ? ['presenca', 'programacao', 'refeicoes', 'alojamento', 'resumo'] : ['presenca', 'programacao', 'refeicoes', 'resumo'];
+  }
   var separador = 'presenca';
   var rasc = null;        // rascunho (o que a pessoa está a preencher)
   var base = '';          // fotografia do rascunho guardado, para saber se há alterações
@@ -166,6 +170,16 @@
     return !!(c && c.estado !== 'cancelada');
   }
   function editavel() { return dados.janela.estado === 'aberta' && !aGuardar; }
+  function refeicoesFechadas() {
+    var f = dados.fechos && dados.fechos.refeicoes;
+    return !!f && Date.now() > Date.parse(f);
+  }
+  // Pode pedir ou alterar alojamento (independente de estar a guardar neste momento).
+  function alojPermitido() {
+    var a = dados.alojamento;
+    return dados.janela.estado === 'aberta' && a.disponivel === 'sim' && a.aberto && !(a.instituicao_ocupada && !a.pedido);
+  }
+  function alojEditavel() { return alojPermitido() && !aGuardar; }
 
   function iniciarRascunho() {
     var p = dados.pessoa, s = dados.selecao, c = s.confirmacao;
@@ -179,7 +193,8 @@
       refeicoes: s.refeicoes.slice(),
       restricoes: c ? c.restricoes_alimentares : '',
       mensagem: c ? c.mensagem : '',
-      rgpd: c ? !!c.rgpd : false
+      rgpd: c ? !!c.rgpd : false,
+      aloj: rascunhoAloj()
     };
     base = fotografia();
     pediuConfirmar = false;
@@ -187,9 +202,21 @@
     separador = inscrito() ? 'resumo' : 'presenca';
   }
 
+  function rascunhoAloj() {
+    var a = dados.alojamento, pd = a && a.pedido;
+    var seg = pd && pd.segunda ? /^(.*?)(?: <(.*)>)?$/.exec(pd.segunda) : null;
+    return {
+      necessita: pd ? 'sim' : '',
+      tipo_quarto: pd ? pd.tipo_quarto : 'individual',
+      checkin: pd ? pd.checkin : '', checkout: pd ? pd.checkout : '',
+      segunda_nome: seg ? seg[1] : '', segunda_email: seg && seg[2] ? seg[2] : '',
+      declaracao: !!pd
+    };
+  }
+
   function fotografia() {
     return JSON.stringify([rasc.nome, rasc.telefone, rasc.instituicao, rasc.funcao, rasc.necessidades, rasc.peca_declarada,
-      rasc.dias, rasc.sessoes.slice().sort(), rasc.refeicoes.slice().sort(), rasc.restricoes, rasc.mensagem]);
+      rasc.dias, rasc.sessoes.slice().sort(), rasc.refeicoes.slice().sort(), rasc.restricoes, rasc.mensagem, rasc.aloj]);
   }
   function alterado() { return fotografia() !== base; }
 
@@ -208,7 +235,6 @@
     if (!rasc) iniciarRascunho();
     var p = dados.pessoa;
     raiz.appendChild(el('h1', { texto: p.nome ? t('saudacao', { nome: p.nome }) : t('saudacaoSemNome') }));
-    raiz.appendChild(el('p', { classe: 'suave', texto: t('nivel')[p.nivel] || '' }));
 
     var j = dados.janela;
     var aviso = j.estado === 'aberta' ? t('janelaAberta', { fecho: formatarDataHora(j.fecha_em) })
@@ -221,7 +247,7 @@
     }
 
     var lista = el('div', { classe: 'separadores', role: 'tablist', 'aria-label': t('separadoresLabel') });
-    ORDEM.forEach(function (id) {
+    ordem().forEach(function (id) {
       var b = el('button', {
         type: 'button', role: 'tab', id: 'sep-' + id, classe: 'separador' + (id === separador ? ' ativo' : ''),
         'aria-selected': id === separador ? 'true' : 'false', 'aria-controls': 'painel', texto: t('separadores')[id]
@@ -262,10 +288,11 @@
     if (separador === 'presenca') painelPresenca(painel);
     else if (separador === 'programacao') painelProgramacao(painel);
     else if (separador === 'refeicoes') painelRefeicoes(painel);
+    else if (separador === 'alojamento') painelAlojamento(painel);
     else painelResumo(painel);
     if (separador !== 'resumo') {
       var seg = el('button', { type: 'button', classe: 'botao', texto: t('seguinte') });
-      seg.addEventListener('click', function () { mudarSeparador(ORDEM[ORDEM.indexOf(separador) + 1]); });
+      seg.addEventListener('click', function () { var o = ordem(); mudarSeparador(o[o.indexOf(separador) + 1]); });
       painel.appendChild(el('div', { classe: 'acoes' }, [seg]));
     }
   }
@@ -436,7 +463,7 @@
     painel.appendChild(el('h2', { texto: t('refeicoesTitulo') }));
     var refeicoes = dados.programa.refeicoes.filter(function (r) { return r.acesso && !diaNao(r.dia); });
     if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoes') })); return; }
-    painel.appendChild(el('p', { classe: 'suave', texto: t('refeicoesNota') }));
+    painel.appendChild(el('p', { classe: 'suave', texto: refeicoesFechadas() ? t('refeicoesFechadas') : t('refeicoesNota') }));
     refeicoes.forEach(function (r) {
       var hora = r.fim ? r.inicio + ' – ' + r.fim : r.inicio;
       var nome = r.tipo === 'jantar' ? t('jantar') : t('almoco');
@@ -444,7 +471,7 @@
       var id = 'r-' + r.id;
       var cx = el('input', { type: 'checkbox', id: id });
       cx.checked = rasc.refeicoes.indexOf(r.id) > -1;
-      if (!editavel() || diaNao(r.dia)) cx.disabled = true;
+      if (!editavel() || diaNao(r.dia) || refeicoesFechadas()) cx.disabled = true;
       cx.addEventListener('change', function () {
         var i = rasc.refeicoes.indexOf(r.id);
         if (cx.checked && i < 0) rasc.refeicoes.push(r.id);
@@ -468,6 +495,101 @@
     if (!itens.length) ul.appendChild(el('li', { classe: 'suave', texto: t('resumoNenhuma') }));
     itens.forEach(function (i) { ul.appendChild(el('li', { texto: i })); });
     return el('div', {}, [el('h3', { texto: titulo }), ul]);
+  }
+
+  function formatarDataCurta(iso) {
+    return new Intl.DateTimeFormat(lang === 'pt' ? 'pt-PT' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(iso + 'T12:00:00Z'));
+  }
+
+  function noitesDe(a) {
+    if (!a.checkin || !a.checkout) return 0;
+    return Math.round((Date.parse(a.checkout + 'T00:00:00Z') - Date.parse(a.checkin + 'T00:00:00Z')) / 86400000);
+  }
+
+  function selecionar(id, etiqueta, opcoes, valor, aoMudar, desativado) {
+    var sel = el('select', { id: id }, opcoes.map(function (o) { return el('option', { value: o[0], texto: o[1] }); }));
+    sel.value = valor || '';
+    if (desativado) sel.disabled = true;
+    sel.addEventListener('change', function () { aoMudar(sel.value); });
+    return el('div', { classe: 'campo' }, [el('label', { 'for': id, texto: etiqueta }), sel]);
+  }
+
+  function painelAlojamento(painel) {
+    var a = dados.alojamento, aj = rasc.aloj;
+    painel.appendChild(el('h2', { texto: t('alojTitulo') }));
+    if (a.hotel) painel.appendChild(el('p', { classe: 'suave', texto: t('alojHotel', { hotel: a.hotel }) }));
+
+    if (a.disponivel === 'equipa') {
+      painel.appendChild(el('div', { classe: 'cartao aviso' }, [el('p', { texto: t('alojEquipa') })]));
+      return;
+    }
+    if (a.disponivel !== 'sim') {
+      painel.appendChild(el('p', { classe: 'suave', texto: t('alojNao') }));
+      return;
+    }
+    if (a.instituicao_ocupada && !a.pedido) {
+      painel.appendChild(el('div', { classe: 'cartao aviso' }, [el('p', { texto: t('alojInstituicao') })]));
+      return;
+    }
+    if (!a.aberto) painel.appendChild(el('p', { classe: 'erro', texto: t('alojFechado', { data: formatarDataHora(dados.fechos.alojamento) }) }));
+    else painel.appendChild(el('p', { classe: 'suave', texto: t('alojPrazo', { data: formatarDataHora(dados.fechos.alojamento) }) }));
+    painel.appendChild(el('p', { classe: 'suave', texto: t('alojUma') }));
+
+    var ed = alojEditavel();
+    painel.appendChild(selecionar('al-nec', t('alojPrecisa'),
+      [['', '—'], ['sim', t('sim')], ['nao', t('nao')]], aj.necessita, function (v) { aj.necessita = v; redesenhar('al-nec'); }, !ed));
+    if (aj.necessita !== 'sim') return;
+
+    painel.appendChild(selecionar('al-tipo', t('alojTipo'),
+      [['individual', t('alojIndividual')], ['duplo', t('alojDuplo')]], aj.tipo_quarto, function (v) { aj.tipo_quarto = v; redesenhar('al-tipo'); }, !ed));
+    var datas = a.datas.map(function (d) { return [d, formatarDataCurta(d)]; });
+    painel.appendChild(selecionar('al-in', t('alojEntrada'), [['', '—']].concat(datas), aj.checkin, function (v) { aj.checkin = v; redesenhar('al-in'); }, !ed));
+    painel.appendChild(selecionar('al-out', t('alojSaida'), [['', '—']].concat(datas), aj.checkout, function (v) { aj.checkout = v; redesenhar('al-out'); }, !ed));
+
+    if (aj.tipo_quarto === 'duplo') {
+      painel.appendChild(el('p', { classe: 'suave', texto: t('alojSegundaNota') }));
+      var n = el('input', { type: 'text', id: 'al-seg', maxlength: '120', value: aj.segunda_nome });
+      var e = el('input', { type: 'email', id: 'al-segmail', maxlength: '120', value: aj.segunda_email });
+      if (!ed) { n.disabled = true; e.disabled = true; }
+      n.addEventListener('input', function () { aj.segunda_nome = n.value; });
+      e.addEventListener('input', function () { aj.segunda_email = e.value; });
+      painel.appendChild(el('div', { classe: 'campo' }, [el('label', { 'for': 'al-seg', texto: t('alojSegundaNome') }), n]));
+      painel.appendChild(el('div', { classe: 'campo' }, [el('label', { 'for': 'al-segmail', texto: t('alojSegundaEmail') }), e]));
+    }
+
+    var noites = noitesDe(aj);
+    if (noites > 0) {
+      var excedente = aj.tipo_quarto === 'duplo' ? noites * a.custos.excedente_noite : 0;
+      var linhas = [t('alojNoites', { n: noites }), t('alojTaxa', { valor: a.custos.taxa_pessoa })];
+      if (excedente) linhas.push(t('alojExcedente', { valor: excedente, noite: a.custos.excedente_noite, n: noites }));
+      linhas.push(t('alojTotal', { valor: excedente + a.custos.taxa_pessoa }));
+      painel.appendChild(el('div', { classe: 'cartao' }, [
+        el('h3', { texto: t('alojCustos') })
+      ].concat(linhas.map(function (x) { return el('p', { texto: x }); })).concat([el('p', { classe: 'suave pequeno', texto: t('alojPagamento') })])));
+    } else if (aj.checkin && aj.checkout) {
+      painel.appendChild(el('p', { classe: 'erro', texto: t('erros').alojamento_dados }));
+    }
+    if (a.prazo_cancelamento) painel.appendChild(el('p', { classe: 'suave pequeno', texto: t('alojCancelamento', { prazo: a.prazo_cancelamento }) }));
+
+    var cx = el('input', { type: 'checkbox', id: 'al-decl' });
+    cx.checked = aj.declaracao;
+    if (!ed) cx.disabled = true;
+    cx.addEventListener('change', function () { aj.declaracao = cx.checked; });
+    painel.appendChild(el('div', { classe: 'cartao' }, [
+      el('h3', { texto: t('alojDeclaracao') }),
+      el('p', { texto: lang === 'pt' ? a.declaracao_pt : a.declaracao_en }),
+      el('label', { classe: 'opcao', 'for': 'al-decl' }, [cx, el('span', { texto: t('alojDeclaroCheck') })])
+    ]));
+  }
+
+  function validarAloj() {
+    var a = dados.alojamento, aj = rasc.aloj;
+    if (!alojPermitido() || aj.necessita !== 'sim') return '';
+    var n = noitesDe(aj);
+    if (!aj.checkin || !aj.checkout || n < 1 || n > 4) return t('erros').alojamento_dados;
+    if (aj.tipo_quarto === 'duplo' && !String(aj.segunda_nome || '').trim()) return t('erros').alojamento_segunda;
+    if (!aj.declaracao) return t('erros').declaracao;
+    return '';
   }
 
   function painelResumo(painel) {
@@ -494,6 +616,15 @@
       return r ? (r.tipo === 'jantar' ? t('jantar') : t('almoco')) + ' · ' + formatarDia(r.dia) : null;
     }).filter(Boolean);
     if (dados.programa.refeicoes.some(function (r) { return r.acesso; })) painel.appendChild(listaResumo(t('resumoRefeicoes'), refs));
+    var da = dados.alojamento;
+    if (da && (da.disponivel === 'sim')) {
+      var aj = rasc.aloj, itens = [];
+      if (aj.necessita === 'sim' && aj.checkin && aj.checkout) {
+        itens.push((aj.tipo_quarto === 'duplo' ? t('alojDuplo') : t('alojIndividual')) + ' · ' + formatarDataCurta(aj.checkin) + ' → ' + formatarDataCurta(aj.checkout) + ' (' + t('alojNoites', { n: noitesDe(aj) }) + ')');
+        if (aj.tipo_quarto === 'duplo' && aj.segunda_nome) itens.push(t('alojSegundaNome') + ': ' + aj.segunda_nome);
+      } else if (aj.necessita === 'nao') itens.push(t('alojSem'));
+      painel.appendChild(listaResumo(t('separadores').alojamento, itens));
+    }
 
     if (dados.janela.estado !== 'aberta') {
       painel.appendChild(el('p', { classe: 'suave', texto: t('consultaApenas') }));
@@ -535,6 +666,8 @@
     mensagem = null;
     if (!String(rasc.nome || '').trim()) { mensagem = { tipo: 'erro', texto: t('faltaNome') }; separador = 'presenca'; desenhar(); window.scrollTo(0, 0); return; }
     if (!rasc.rgpd) { mensagem = { tipo: 'erro', texto: t('faltaRgpd') }; desenhar(); window.scrollTo(0, 0); return; }
+    var erroAloj = validarAloj();
+    if (erroAloj) { mensagem = { tipo: 'erro', texto: erroAloj }; separador = 'alojamento'; desenhar(); window.scrollTo(0, 0); return; }
     aGuardar = true;
     desenhar();
     var carga = {
@@ -543,6 +676,12 @@
       peca_declarada: rasc.peca_declarada, idioma: lang, rgpd: true, dias: rasc.dias,
       sessoes: rasc.sessoes, refeicoes: rasc.refeicoes
     };
+    if (alojPermitido()) {
+      var aj = rasc.aloj;
+      if (aj.necessita === 'nao') carga.alojamento = { necessita: 'nao' };
+      else if (aj.necessita === 'sim') carga.alojamento = { necessita: 'sim', tipo_quarto: aj.tipo_quarto, checkin: aj.checkin, checkout: aj.checkout,
+        segunda_nome: aj.segunda_nome, segunda_email: aj.segunda_email, declaracao: aj.declaracao };
+    }
     try {
       var r = await window.futuraApi.guardar(token, carga);
       aGuardar = false;
