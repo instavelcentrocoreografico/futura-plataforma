@@ -36,8 +36,12 @@
       onsubmit: function (ev) {
         ev.preventDefault();
         botao.disabled = true;
+        botao.textContent = 'A enviar…';
+        estado.className = 'suave';
+        estado.textContent = 'A enviar o pedido. Pode demorar até meio minuto, aguarde.';
         window.futuraApi.boPedirAcesso(campo.value.trim()).then(function (r) {
           botao.disabled = false;
+          botao.textContent = 'Receber link de acesso';
           if (r && r.ok) {
             estado.className = 'sucesso';
             estado.textContent = 'Se este email pertence à equipa, vai receber um link dentro de instantes. Pode fechar esta página.';
@@ -48,6 +52,7 @@
           }
         }).catch(function () {
           botao.disabled = false;
+          botao.textContent = 'Receber link de acesso';
           estado.className = 'erro'; estado.textContent = 'Sem ligação. Verifique a internet e tente outra vez.';
         });
       }
