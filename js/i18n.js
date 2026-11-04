@@ -29,7 +29,7 @@ window.FUTURA_TEXTOS = {
     paginaPeca: 'Ver página no site',
     lugaresLivres: '{n} lugares livres',
     semLugares: 'Esgotado (lista de espera)',
-    semInscricao: 'Sem inscrição',
+    semInscricao: 'Não precisa de inscrição',
     inscricaoPorDefinir: 'Inscrições ainda não abertas',
     bloco: 'Inscrição no bloco',
     porConfirmar: 'Por confirmar',

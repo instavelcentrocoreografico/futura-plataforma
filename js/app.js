@@ -529,6 +529,27 @@
     return el('div', {}, [el('h3', { texto: titulo }), ul]);
   }
 
+  // Lista agrupada por dia: itens = [{ dia, hora, texto }]
+  function listaPorDia(titulo, itens) {
+    var cont = el('div', {}, [el('h3', { texto: titulo })]);
+    if (!itens.length) { cont.appendChild(el('p', { classe: 'suave', texto: t('resumoNenhuma') })); return cont; }
+    itens.sort(function (a, b) { return (a.dia + (a.ordem || a.hora || '')).localeCompare(b.dia + (b.ordem || b.hora || '')); });
+    var diaAtual = null, ul = null;
+    itens.forEach(function (i) {
+      if (i.dia !== diaAtual) {
+        diaAtual = i.dia;
+        cont.appendChild(el('h4', { classe: 'resumo-dia', texto: formatarDia(i.dia) }));
+        ul = el('ul', { classe: 'lista-resumo' });
+        cont.appendChild(ul);
+      }
+      var li = el('li', {});
+      if (i.hora) li.appendChild(el('strong', { texto: i.hora + ' ' }));
+      li.appendChild(document.createTextNode(i.texto));
+      ul.appendChild(li);
+    });
+    return cont;
+  }
+
   function formatarDataCurta(iso) {
     return new Intl.DateTimeFormat(lang === 'pt' ? 'pt-PT' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(iso + 'T12:00:00Z'));
   }
@@ -646,15 +667,15 @@
       var cheia = !g && s.lugares_livres !== null && s.lugares_livres <= 0;
       var estado = g ? (g.estado === 'lista_espera' ? t('estadoEspera', { n: g.posicao || '?' }) : t('estadoConfirmada'))
         : (cheia ? t('pedidoEspera') : t('pedidoLugar'));
-      return formatarDia(s.dia) + ' · ' + s.inicio + ' · ' + tituloSessao(s) + (autoriaSessao(s) ? ' (' + autoriaSessao(s) + ')' : '') + ' — ' + estado;
+      return { dia: s.dia, hora: s.inicio, texto: tituloSessao(s) + (autoriaSessao(s) ? ' (' + autoriaSessao(s) + ')' : '') + ' — ' + estado };
     }).filter(Boolean);
-    painel.appendChild(listaResumo(t('resumoSessoes'), sessoes));
+    painel.appendChild(listaPorDia(t('resumoSessoes'), sessoes));
 
     var refs = rasc.refeicoes.map(function (id) {
       var r = refeicaoPorId(id);
-      return r ? (r.tipo === 'jantar' ? t('jantar') : t('almoco')) + ' · ' + formatarDia(r.dia) : null;
+      return r ? { dia: r.dia, ordem: r.tipo === 'jantar' ? '2' : '1', texto: r.tipo === 'jantar' ? t('jantar') : t('almoco') } : null;
     }).filter(Boolean);
-    if (dados.programa.refeicoes.some(function (r) { return r.acesso; })) painel.appendChild(listaResumo(t('resumoRefeicoes'), refs));
+    if (dados.programa.refeicoes.some(function (r) { return r.acesso; })) painel.appendChild(listaPorDia(t('resumoRefeicoes'), refs));
     var da = dados.alojamento;
     if (da && (da.disponivel === 'sim')) {
       var aj = rasc.aloj, itens = [];
