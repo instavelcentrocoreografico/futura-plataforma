@@ -100,7 +100,10 @@ input[type="email"]:focus { border-color: var(--destaque); }
 .erro { color: var(--destaque); font-weight: 600; }
 
 /* Programação */
-.dia { margin-top: 2.2rem; text-transform: capitalize; }
+.dia {
+  margin-top: 2.6rem; text-transform: capitalize;
+  font-size: 1.55rem; padding: 6px 0 6px 14px; border-left: 6px solid var(--destaque);
+}
 .sessao {
   border: 1px solid var(--cinza);
   border-radius: 12px;
@@ -184,3 +187,7 @@ fieldset.dia-opcoes { border: 1px solid var(--cinza); border-radius: 12px; margi
 .lista-resumo li { margin-bottom: 4px; }
 .sucesso { color: var(--titulo); font-weight: 600; }
 .botao-texto[disabled] { opacity: 0.5; cursor: default; }
+
+.sessao-artistas { color: var(--texto-suave); margin: 2px 0 0; }
+.lista-bloco { margin: 8px 0 0; padding-left: 20px; color: var(--texto-suave); font-size: 0.92rem; }
+.lista-bloco li { margin-bottom: 2px; }

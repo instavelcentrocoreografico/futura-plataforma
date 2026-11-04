@@ -177,14 +177,18 @@
   // Pode pedir ou alterar alojamento (independente de estar a guardar neste momento).
   function alojPermitido() {
     var a = dados.alojamento;
-    return dados.janela.estado === 'aberta' && a.disponivel === 'sim' && a.aberto && !(a.instituicao_ocupada && !a.pedido);
+    return !!a && dados.janela.estado === 'aberta' && a.disponivel === 'sim' && a.aberto && !(a.instituicao_ocupada && !a.pedido);
   }
   function alojEditavel() { return alojPermitido() && !aGuardar; }
 
   function iniciarRascunho() {
     var p = dados.pessoa, s = dados.selecao, c = s.confirmacao;
     var dias = c ? { dia_10: c.dia_10, dia_11: c.dia_11, dia_12: c.dia_12 }
-      : Object.assign({}, s.dias_sugeridos || { dia_10: 'por_definir', dia_11: 'por_definir', dia_12: 'por_definir' });
+      : Object.assign({}, s.dias_sugeridos || {});
+    // Sem escolha por defeito: quem ainda não respondeu fica com os dias por marcar.
+    ['dia_10', 'dia_11', 'dia_12'].forEach(function (k) {
+      if (!c && (!dias[k] || dias[k] === 'por_definir')) dias[k] = '';
+    });
     rasc = {
       nome: p.nome, telefone: p.telefone, instituicao: p.instituicao, funcao: p.funcao,
       necessidades: p.necessidades_especificas, peca_declarada: p.peca_declarada,
@@ -222,6 +226,17 @@
 
   function chaveDia(dia) { var m = /-(\d{2})$/.exec(dia); return m ? 'dia_' + parseInt(m[1], 10) : ''; }
   function diaNao(dia) { return rasc.dias[chaveDia(dia)] === 'nao'; }
+  // Só se escolhem sessões, refeições e alojamento nos dias marcados "Sim".
+  function diaSim(dia) { return rasc.dias[chaveDia(dia)] === 'sim'; }
+  function algumDiaSim() { return ['dia_10', 'dia_11', 'dia_12'].some(function (k) { return rasc.dias[k] === 'sim'; }); }
+  function diasPreenchidos() { return ['dia_10', 'dia_11', 'dia_12'].every(function (k) { return ['sim', 'nao', 'por_definir'].indexOf(rasc.dias[k]) > -1; }); }
+  function diaAntes(iso) { return new Date(Date.parse(iso + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10); }
+  // Datas de alojamento: entrada num dia "Sim" e última noite num dia "Sim".
+  function datasEntradaOk(d) { return diaSim(d); }
+  function datasSaidaOk(d, checkin) { return diaSim(diaAntes(d)) && (!checkin || d > checkin); }
+  // Título e artistas mostrados: se a sessão tem uma só peça, a peça primeiro e o artista a seguir.
+  function tituloSessao(s) { return (s.tipo === 'apresentacao' && s.pecas.length === 1 && s.pecas[0].titulo) ? s.pecas[0].titulo : s.titulo; }
+  function autoriaSessao(s) { return (s.tipo === 'apresentacao' && s.pecas.length === 1 && s.pecas[0].titulo && s.pecas[0].artistas) ? s.pecas[0].artistas : ''; }
 
   function sessaoPorId(id) { return dados.programa.sessoes.filter(function (s) { return s.id === id; })[0]; }
   function refeicaoPorId(id) { return dados.programa.refeicoes.filter(function (r) { return r.id === id; })[0]; }
@@ -315,6 +330,10 @@
     painel.appendChild(campoTexto('f-email', t('emailEtiqueta'), 'email', { tipo: 'email', bloqueado: true, valor: p.email }));
     painel.appendChild(campoTexto('f-tel', t('telefone'), 'telefone', { tipo: 'tel', auto: 'tel', max: 40 }));
     painel.appendChild(campoTexto('f-inst', t('instituicao'), 'instituicao', { bloqueado: !p.instituicao_editavel }));
+    if (!p.instituicao_editavel && p.instituicao) {
+      var contacto = dados.config && dados.config.contacto ? ' (' + dados.config.contacto + ')' : '';
+      painel.lastChild.appendChild(el('p', { classe: 'suave pequeno', texto: t('instBloqueada', { contacto: contacto }) }));
+    }
     painel.appendChild(campoTexto('f-funcao', t('funcao'), 'funcao'));
     painel.appendChild(campoTexto('f-nec', t('necessidades'), 'necessidades', { multilinha: true }));
 
@@ -349,7 +368,7 @@
         if (!editavel()) r.disabled = true;
         r.addEventListener('change', function () {
           rasc.dias[chave] = op[0];
-          if (op[0] === 'nao') {
+          if (op[0] !== 'sim') {
             var antes = rasc.sessoes.length + rasc.refeicoes.length;
             rasc.sessoes = rasc.sessoes.filter(function (sid) { var s = sessaoPorId(sid); return !s || chaveDia(s.dia) !== chave; });
             rasc.refeicoes = rasc.refeicoes.filter(function (rid) { var x = refeicaoPorId(rid); return !x || chaveDia(x.dia) !== chave; });
@@ -368,7 +387,7 @@
     var dias = [];
     dados.programa.sessoes.forEach(function (s) { if (dias.indexOf(s.dia) < 0) dias.push(s.dia); });
     dias.sort();
-    dias = dias.filter(function (d) { return !diaNao(d); });
+    dias = dias.filter(function (d) { return diaSim(d); });
     if (diaFiltro && dias.indexOf(diaFiltro) < 0) diaFiltro = '';
     var barra = el('div', { classe: 'filtro', role: 'group', 'aria-label': t('filtroDia') });
     [''].concat(dias).forEach(function (d) {
@@ -382,8 +401,9 @@
 
   function painelProgramacao(painel) {
     painel.appendChild(el('h2', { texto: t('separadores').programacao }));
+    if (!algumDiaSim()) { painel.appendChild(el('p', { classe: 'aviso-espera', texto: t('semDiasSim') })); return; }
     var dias = filtroDias(painel);
-    dias.filter(function (d) { return !diaNao(d) && (!diaFiltro || d === diaFiltro); }).forEach(function (dia) {
+    dias.filter(function (d) { return diaSim(d) && (!diaFiltro || d === diaFiltro); }).forEach(function (dia) {
       painel.appendChild(el('h3', { classe: 'dia', texto: formatarDia(dia) }));
       dados.programa.sessoes.filter(function (s) { return s.dia === dia; }).forEach(function (s) {
         painel.appendChild(desenharSessao(s));
@@ -412,8 +432,10 @@
     var cartao = el('article', { classe: 'sessao' + (marcada ? ' marcada' : '') }, [
       el('div', { classe: 'sessao-cabeca' }, [
         el('span', { classe: 'sessao-hora', texto: hora }),
-        el('span', { classe: 'sessao-titulo', texto: s.titulo })
+        el('span', { classe: 'sessao-titulo', texto: tituloSessao(s) })
       ]),
+      autoriaSessao(s) ? el('p', { classe: 'sessao-artistas', texto: autoriaSessao(s) }) : null,
+      listaBloco(s),
       el('p', { classe: 'sessao-info' }, etiquetas.concat([el('span', { texto: info.join(' · ') })]))
     ]);
 
@@ -421,7 +443,7 @@
       var id = 's-' + s.id;
       var cx = el('input', { type: 'checkbox', id: id });
       cx.checked = marcada;
-      var bloqueada = !editavel() || diaNao(s.dia);
+      var bloqueada = !editavel() || !diaSim(s.dia);
       if (bloqueada) cx.disabled = true;
       cx.addEventListener('change', function () {
         var i = rasc.sessoes.indexOf(s.id);
@@ -429,7 +451,7 @@
         if (!cx.checked && i > -1) rasc.sessoes.splice(i, 1);
         redesenhar(id);
       });
-      cartao.appendChild(el('label', { classe: 'opcao', 'for': id }, [cx, el('span', { texto: t('inscreverEm', { titulo: s.titulo }) })]));
+      cartao.appendChild(el('label', { classe: 'opcao', 'for': id }, [cx, el('span', { texto: t('inscreverEm', { titulo: tituloSessao(s) }) })]));
       if (marcada && !guardada && s.lugares_livres !== null && s.lugares_livres <= 0) {
         cartao.appendChild(el('p', { classe: 'aviso-espera', texto: t('vaiEspera') }));
       }
@@ -453,6 +475,14 @@
     return cartao;
   }
 
+  // Nos blocos (Estúdio, Vídeos), mostra logo a lista de peças e criadores, sem ser preciso abrir "Ver mais".
+  function listaBloco(s) {
+    if (s.tipo !== 'bloco' || !s.pecas.length) return null;
+    return el('ul', { classe: 'lista-bloco' }, s.pecas.filter(function (x) { return x.titulo; }).map(function (x) {
+      return el('li', { texto: x.artistas ? x.titulo + ' · ' + x.artistas : x.titulo });
+    }));
+  }
+
   function textoSinopse(peca) {
     var principal = lang === 'pt' ? peca.sinopse_pt : peca.sinopse_en;
     var outra = lang === 'pt' ? peca.sinopse_en : peca.sinopse_pt;
@@ -461,8 +491,11 @@
 
   function painelRefeicoes(painel) {
     painel.appendChild(el('h2', { texto: t('refeicoesTitulo') }));
-    var refeicoes = dados.programa.refeicoes.filter(function (r) { return r.acesso && !diaNao(r.dia); });
-    if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoes') })); return; }
+    var comAcesso = dados.programa.refeicoes.filter(function (r) { return r.acesso; });
+    if (!comAcesso.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoes') })); return; }
+    if (!algumDiaSim()) { painel.appendChild(el('p', { classe: 'aviso-espera', texto: t('semDiasSim') })); return; }
+    var refeicoes = comAcesso.filter(function (r) { return diaSim(r.dia); });
+    if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoesDia') })); return; }
     painel.appendChild(el('p', { classe: 'suave', texto: refeicoesFechadas() ? t('refeicoesFechadas') : t('refeicoesNota') }));
     refeicoes.forEach(function (r) {
       var hora = r.fim ? r.inicio + ' – ' + r.fim : r.inicio;
@@ -471,7 +504,7 @@
       var id = 'r-' + r.id;
       var cx = el('input', { type: 'checkbox', id: id });
       cx.checked = rasc.refeicoes.indexOf(r.id) > -1;
-      if (!editavel() || diaNao(r.dia) || refeicoesFechadas()) cx.disabled = true;
+      if (!editavel() || !diaSim(r.dia) || refeicoesFechadas()) cx.disabled = true;
       cx.addEventListener('change', function () {
         var i = rasc.refeicoes.indexOf(r.id);
         if (cx.checked && i < 0) rasc.refeicoes.push(r.id);
@@ -483,7 +516,6 @@
         el('p', { classe: 'sessao-info', texto: linha })
       ];
       if (r.custo_pessoa) partes.push(el('p', { classe: 'sessao-info', texto: t('custo', { valor: r.custo_pessoa }) }));
-      if (diaNao(r.dia)) partes.push(el('p', { classe: 'sessao-info', texto: t('diaNaoMarcado') }));
       partes.push(el('label', { classe: 'opcao', 'for': id }, [cx, el('span', { texto: t('refeicaoEscolher', { titulo: nome + ' – ' + formatarDia(r.dia) }) })]));
       painel.appendChild(el('article', { classe: 'sessao' + (cx.checked ? ' marcada' : '') }, partes));
     });
@@ -543,8 +575,8 @@
     painel.appendChild(selecionar('al-tipo', t('alojTipo'),
       [['individual', t('alojIndividual')], ['duplo', t('alojDuplo')]], aj.tipo_quarto, function (v) { aj.tipo_quarto = v; redesenhar('al-tipo'); }, !ed));
     var fmt = function (d) { return [d, formatarDataCurta(d)]; };
-    painel.appendChild(selecionar('al-in', t('alojEntrada'), [['', '—']].concat(a.datas_entrada.map(fmt)), aj.checkin, function (v) { aj.checkin = v; redesenhar('al-in'); }, !ed));
-    painel.appendChild(selecionar('al-out', t('alojSaida'), [['', '—']].concat(a.datas_saida.map(fmt)), aj.checkout, function (v) { aj.checkout = v; redesenhar('al-out'); }, !ed));
+    painel.appendChild(selecionar('al-in', t('alojEntrada'), [['', '—']].concat(a.datas_entrada.filter(datasEntradaOk).map(fmt)), aj.checkin, function (v) { aj.checkin = v; redesenhar('al-in'); }, !ed));
+    painel.appendChild(selecionar('al-out', t('alojSaida'), [['', '—']].concat(a.datas_saida.filter(function (d) { return datasSaidaOk(d, aj.checkin); }).map(fmt)), aj.checkout, function (v) { aj.checkout = v; redesenhar('al-out'); }, !ed));
 
     if (aj.tipo_quarto === 'duplo') {
       painel.appendChild(el('p', { classe: 'suave', texto: t('alojSegundaNota') }));
@@ -560,9 +592,15 @@
     var noites = noitesDe(aj);
     if (noites > 0) {
       var excedente = aj.tipo_quarto === 'duplo' ? noites * a.custos.excedente_noite : 0;
-      var linhas = [t('alojNoites', { n: noites }), t('alojTaxa', { valor: a.custos.taxa_pessoa })];
-      if (excedente) linhas.push(t('alojExcedente', { valor: excedente, noite: a.custos.excedente_noite, n: noites }));
-      linhas.push(t('alojTotal', { valor: excedente + a.custos.taxa_pessoa }));
+      var taxa = aj.tipo_quarto === 'duplo' ? noites * a.custos.taxa_pessoa : 0;
+      var linhas = [t('alojNoites', { n: noites })];
+      if (aj.tipo_quarto === 'duplo') {
+        linhas.push(t('alojExcedente', { valor: excedente, noite: a.custos.excedente_noite, n: noites }));
+        linhas.push(t('alojTaxa', { valor: taxa, noite: a.custos.taxa_pessoa, n: noites }));
+        linhas.push(t('alojTotal', { valor: excedente + taxa }));
+      } else {
+        linhas.push(t('alojIndividualInclui'));
+      }
       painel.appendChild(el('div', { classe: 'cartao' }, [
         el('h3', { texto: t('alojCustos') })
       ].concat(linhas.map(function (x) { return el('p', { texto: x }); })).concat([el('p', { classe: 'suave pequeno', texto: t('alojPagamento') })])));
@@ -587,6 +625,7 @@
     if (!alojPermitido() || aj.necessita !== 'sim') return '';
     var n = noitesDe(aj);
     if (!aj.checkin || !aj.checkout || n < 1 || n > 4) return t('erros').alojamento_dados;
+    if (!datasEntradaOk(aj.checkin) || !datasSaidaOk(aj.checkout, aj.checkin)) return t('erros').alojamento_dias;
     if (aj.tipo_quarto === 'duplo' && !String(aj.segunda_nome || '').trim()) return t('erros').alojamento_segunda;
     if (!aj.declaracao) return t('erros').declaracao;
     return '';
@@ -596,7 +635,7 @@
     painel.appendChild(el('h2', { texto: t('resumoTitulo') }));
     var dias = ['dia_10', 'dia_11', 'dia_12'].map(function (k, i) {
       var v = rasc.dias[k];
-      return formatarDia('2026-12-' + (10 + i)) + ': ' + (v === 'sim' ? t('sim') : v === 'nao' ? t('nao') : t('porDefinir'));
+      return formatarDia('2026-12-' + (10 + i)) + ': ' + (v === 'sim' ? t('sim') : v === 'nao' ? t('nao') : v === 'por_definir' ? t('porDefinir') : '—');
     });
     painel.appendChild(listaResumo(t('resumoDias'), dias));
 
@@ -607,7 +646,7 @@
       var cheia = !g && s.lugares_livres !== null && s.lugares_livres <= 0;
       var estado = g ? (g.estado === 'lista_espera' ? t('estadoEspera', { n: g.posicao || '?' }) : t('estadoConfirmada'))
         : (cheia ? t('pedidoEspera') : t('pedidoLugar'));
-      return formatarDia(s.dia) + ' · ' + s.inicio + ' · ' + s.titulo + ' — ' + estado;
+      return formatarDia(s.dia) + ' · ' + s.inicio + ' · ' + tituloSessao(s) + (autoriaSessao(s) ? ' (' + autoriaSessao(s) + ')' : '') + ' — ' + estado;
     }).filter(Boolean);
     painel.appendChild(listaResumo(t('resumoSessoes'), sessoes));
 
@@ -665,6 +704,7 @@
   async function guardar() {
     mensagem = null;
     if (!String(rasc.nome || '').trim()) { mensagem = { tipo: 'erro', texto: t('faltaNome') }; separador = 'presenca'; desenhar(); window.scrollTo(0, 0); return; }
+    if (!diasPreenchidos()) { mensagem = { tipo: 'erro', texto: t('erros').dias_em_falta }; separador = 'presenca'; desenhar(); window.scrollTo(0, 0); return; }
     if (!rasc.rgpd) { mensagem = { tipo: 'erro', texto: t('faltaRgpd') }; desenhar(); window.scrollTo(0, 0); return; }
     var erroAloj = validarAloj();
     if (erroAloj) { mensagem = { tipo: 'erro', texto: erroAloj }; separador = 'alojamento'; desenhar(); window.scrollTo(0, 0); return; }

@@ -285,6 +285,17 @@
         } }, 'Validar'), cv]));
     }
     if (admin) {
+      var inNome = el('input', { type: 'text', value: x.nome === '(sem nome)' ? '' : x.nome, 'aria-label': 'Nome' });
+      var inInst = el('input', { type: 'text', value: x.instituicao || '', 'aria-label': 'Instituição' });
+      var inFunc = el('input', { type: 'text', value: x.funcao || '', 'aria-label': 'Função' });
+      var ced = el('div');
+      var campoEd = function (t, c) { return el('div', { class: 'campo' }, [el('label', {}, t), c]); };
+      secoes.push(el('div', { class: 'acao-bloco' }, [el('h3', {}, 'Editar dados'), campoEd('Nome', inNome), campoEd('Instituição', inInst), campoEd('Função', inFunc),
+        el('button', { type: 'button', class: 'botao-texto', onclick: function () {
+          if (!inNome.value.trim()) { limpar(ced); ced.appendChild(el('p', { class: 'erro' }, 'O nome não pode ficar vazio.')); return; }
+          comConfirmacao(ced, 'Guardar estes dados para ' + x.nome + '? Se mudar a instituição, muda também a regra de uma estadia por instituição.',
+            function () { return executar(ctx, 'editar_pessoa', { pessoa_id: x.id, nome: inNome.value, instituicao: inInst.value, funcao: inFunc.value }, inNome.value.trim() + ': dados guardados.'); });
+        } }, 'Guardar dados'), ced]));
       var selNivel = el('select', { 'aria-label': 'Nível' }, [1, 2, 3].map(function (n) { var o = el('option', { value: String(n) }, NIV[n]); if (n === x.nivel) o.selected = true; return o; }));
       var cn = el('div');
       secoes.push(el('div', { class: 'acao-bloco' }, [el('label', {}, 'Nível'), el('div', { class: 'acoes' }, [selNivel,
