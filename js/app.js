@@ -158,8 +158,8 @@
     var comAloj = a && (a.disponivel !== 'nao' || a.pedido) && !(n1 && !a.aberto);
     var comRef = !(n1 && refeicoesFechadas());
     var o = ['presenca', 'programacao'];
-    if (comRef) o.push('refeicoes');
     if (comAloj) o.push('alojamento');
+    if (comRef) o.push('refeicoes');
     o.push('resumo');
     return o;
   }
