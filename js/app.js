@@ -97,6 +97,7 @@
     document.getElementById('botao-idioma').textContent = t('idiomaBotao');
     document.getElementById('rodape-texto').textContent = t('rodape');
     raiz.textContent = '';
+    if (dados && ordem().indexOf(separador) < 0) separador = 'programacao';
     if (dados) desenharPerfil(); else desenharPedido(mensagemErro);
   }
 
@@ -153,8 +154,14 @@
 
   function ordem() {
     var a = dados && dados.alojamento;
-    var comAloj = a && (a.disponivel !== 'nao' || a.pedido);
-    return comAloj ? ['presenca', 'programacao', 'refeicoes', 'alojamento', 'resumo'] : ['presenca', 'programacao', 'refeicoes', 'resumo'];
+    var n1 = dados && dados.pessoa && dados.pessoa.nivel === 1;
+    var comAloj = a && (a.disponivel !== 'nao' || a.pedido) && !(n1 && !a.aberto);
+    var comRef = !(n1 && refeicoesFechadas());
+    var o = ['presenca', 'programacao'];
+    if (comRef) o.push('refeicoes');
+    if (comAloj) o.push('alojamento');
+    o.push('resumo');
+    return o;
   }
   var separador = 'presenca';
   var rasc = null;        // rascunho (o que a pessoa está a preencher)
@@ -280,6 +287,13 @@
       if (f) f.focus();
       focoPendente = '';
     }
+  }
+
+  var SALAS_EN = { 'Cine-Estúdio': 'Cine-Studio', 'Café-Teatro': 'Café-Teatro', 'Sala-Estúdio': 'Studio', 'Grande Auditório': 'Stage Auditorium',
+    'Estúdio 1': 'Studio 1', 'Estúdio 2': 'Studio 2', 'Foyer': 'Foyer', 'Planetário': 'Planetarium' };
+  function salaNome(sala) {
+    if (lang !== 'en') return sala;
+    return String(sala).replace(/\s*\(a confirmar\)/i, ' (to be confirmed)').replace(/^[^(]*?(?=\s*\(|$)/, function (n) { return SALAS_EN[n.trim()] || n; });
   }
 
   function redesenhar(foco) {
@@ -414,12 +428,14 @@
   function desenharSessao(s) {
     var hora = s.fim ? s.inicio + ' – ' + s.fim : s.inicio;
     var info = [];
-    if (s.sala) info.push(s.sala);
+    if (s.sala) info.push(salaNome(s.sala));
     var guardada = estadoGuardado(s.id);
     var marcada = rasc.sessoes.indexOf(s.id) > -1;
 
     var etiquetas = [];
     if (s.tipo === 'bloco') etiquetas.push(el('span', { classe: 'etiqueta', texto: t('bloco') }));
+    if (s.idioma === 'pt') etiquetas.push(el('span', { classe: 'etiqueta', texto: t('idiomaPt') }));
+    else if (s.idioma === 'en') etiquetas.push(el('span', { classe: 'etiqueta', texto: t('idiomaEn') }));
     if (s.inscricao === 'por_definir') etiquetas.push(el('span', { classe: 'etiqueta', texto: t('inscricaoPorDefinir') }));
     else if (s.inscricao !== 'sim') etiquetas.push(el('span', { classe: 'etiqueta', texto: t('semInscricao') }));
     else if (s.lugares_livres !== null) {
@@ -496,7 +512,9 @@
     if (!algumDiaSim()) { painel.appendChild(el('p', { classe: 'aviso-espera', texto: t('semDiasSim') })); return; }
     var refeicoes = comAcesso.filter(function (r) { return diaSim(r.dia); });
     if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoesDia') })); return; }
+    var nivel3 = dados.pessoa && dados.pessoa.nivel === 3;
     painel.appendChild(el('p', { classe: 'suave', texto: refeicoesFechadas() ? t('refeicoesFechadas') : t('refeicoesNota') }));
+    if (nivel3 && !refeicoesFechadas()) painel.appendChild(el('p', { classe: 'suave', texto: t('refeicoesNotaN3') }));
     refeicoes.forEach(function (r) {
       var hora = r.fim ? r.inicio + ' – ' + r.fim : r.inicio;
       var nome = r.tipo === 'jantar' ? t('jantar') : t('almoco');
@@ -504,7 +522,8 @@
       var id = 'r-' + r.id;
       var cx = el('input', { type: 'checkbox', id: id });
       cx.checked = rasc.refeicoes.indexOf(r.id) > -1;
-      if (!editavel() || !diaSim(r.dia) || refeicoesFechadas()) cx.disabled = true;
+      var esgotada = !!r.esgotada && !cx.checked;
+      if (!editavel() || !diaSim(r.dia) || refeicoesFechadas() || esgotada) cx.disabled = true;
       cx.addEventListener('change', function () {
         var i = rasc.refeicoes.indexOf(r.id);
         if (cx.checked && i < 0) rasc.refeicoes.push(r.id);
@@ -516,6 +535,10 @@
         el('p', { classe: 'sessao-info', texto: linha })
       ];
       if (r.custo_pessoa) partes.push(el('p', { classe: 'sessao-info', texto: t('custo', { valor: r.custo_pessoa }) }));
+      if (r.notas) partes.push(el('p', { classe: 'sessao-info nota-refeicao', texto: r.notas }));
+      var pedido = (dados.selecao.refeicoes_pedido || []).indexOf(r.id) > -1 && cx.checked;
+      if (pedido) partes.push(el('p', { classe: 'sessao-info' }, [el('span', { classe: 'etiqueta', texto: t('refeicaoPedido') })]));
+      if (esgotada) partes.push(el('p', { classe: 'sessao-info' }, [el('span', { classe: 'etiqueta', texto: t('refeicaoEsgotada') })]));
       partes.push(el('label', { classe: 'opcao', 'for': id }, [cx, el('span', { texto: t('refeicaoEscolher', { titulo: nome + ' – ' + formatarDia(r.dia) }) })]));
       painel.appendChild(el('article', { classe: 'sessao' + (cx.checked ? ' marcada' : '') }, partes));
     });
@@ -570,7 +593,8 @@
   function painelAlojamento(painel) {
     var a = dados.alojamento, aj = rasc.aloj;
     painel.appendChild(el('h2', { texto: t('alojTitulo') }));
-    if (a.hotel) painel.appendChild(el('p', { classe: 'suave', texto: t('alojHotel', { hotel: a.hotel }) }));
+    if (a.hotel) painel.appendChild(el('p', { classe: 'suave', texto: t('alojHotel', { hotel: a.hotel + (a.hotel_morada ? ', ' + a.hotel_morada : '') }) }));
+    if (a.hotel && a.disponivel === 'sim') painel.appendChild(el('p', { classe: 'suave', texto: t('alojPequeno') }));
 
     if (a.disponivel === 'equipa') {
       painel.appendChild(el('div', { classe: 'cartao aviso' }, [el('p', { texto: t('alojEquipa') })]));
@@ -636,7 +660,7 @@
     cx.addEventListener('change', function () { aj.declaracao = cx.checked; });
     painel.appendChild(el('div', { classe: 'cartao' }, [
       el('h3', { texto: t('alojDeclaracao') }),
-      el('p', { texto: lang === 'pt' ? a.declaracao_pt : a.declaracao_en }),
+      el('p', { classe: 'declaracao', texto: lang === 'pt' ? a.declaracao_pt : a.declaracao_en }),
       el('label', { classe: 'opcao', 'for': 'al-decl' }, [cx, el('span', { texto: t('alojDeclaroCheck') })])
     ]));
   }
@@ -673,7 +697,8 @@
 
     var refs = rasc.refeicoes.map(function (id) {
       var r = refeicaoPorId(id);
-      return r ? { dia: r.dia, ordem: r.tipo === 'jantar' ? '2' : '1', texto: r.tipo === 'jantar' ? t('jantar') : t('almoco') } : null;
+      var pend = (dados.selecao.refeicoes_pedido || []).indexOf(id) > -1;
+      return r ? { dia: r.dia, ordem: r.tipo === 'jantar' ? '2' : '1', texto: (r.tipo === 'jantar' ? t('jantar') : t('almoco')) + (pend ? ' — ' + t('refeicaoPedido') : '') } : null;
     }).filter(Boolean);
     if (dados.programa.refeicoes.some(function (r) { return r.acesso; })) painel.appendChild(listaPorDia(t('resumoRefeicoes'), refs));
     var da = dados.alojamento;
@@ -698,7 +723,8 @@
     var texto = el('span', { texto: t('rgpd') + ' ' });
     var rotulo = el('label', { classe: 'opcao', 'for': 'f-rgpd' }, [cx, texto]);
     var url = dados.config && dados.config.url_privacidade;
-    if (urlSegura(url)) texto.appendChild(el('a', { href: url.trim(), target: '_blank', rel: 'noopener noreferrer', texto: t('politica') }));
+    var destino = urlSegura(url) ? url.trim() : 'privacidade.html?l=' + lang;
+    texto.appendChild(el('a', { href: destino, target: '_blank', rel: 'noopener noreferrer', texto: t('politica') }));
     painel.appendChild(el('div', { classe: 'cartao' }, [el('h3', { texto: t('rgpdTitulo') }), rotulo]));
 
     var estado = el('p', { id: 'estado-guardar', role: 'status', 'aria-live': 'polite', classe: 'suave',
@@ -760,8 +786,21 @@
         desenhar();
       }
     } catch (e) {
+      // A resposta demorou ou perdeu-se: vemos se, mesmo assim, a inscrição ficou guardada.
       aGuardar = false;
-      mensagem = { tipo: 'erro', texto: t('erroGeral') };
+      var guardou = false;
+      try {
+        var tentado = { sessoes: rasc.sessoes.slice().sort().join(','), refeicoes: rasc.refeicoes.slice().sort().join(',') };
+        var r2 = await window.futuraApi.carregar(token);
+        if (r2 && r2.ok) {
+          var ses = (r2.selecao.sessoes || []).map(function (x) { return x.sessao_id; }).sort().join(',');
+          var refs = (r2.selecao.refeicoes || []).slice().sort().join(',');
+          guardou = !!(r2.selecao.confirmacao && r2.selecao.confirmacao.estado === 'confirmada') && ses === tentado.sessoes && refs === tentado.refeicoes;
+          if (guardou) { dados = r2; iniciarRascunho(); }
+        }
+      } catch (e2) { guardou = false; }
+      if (guardou) { mensagem = { tipo: 'ok', texto: t('guardadoOk') }; separador = 'resumo'; }
+      else mensagem = { tipo: 'erro', texto: t('erroSemConfirmacao') };
       desenhar();
     }
     window.scrollTo(0, 0);

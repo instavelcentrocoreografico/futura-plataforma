@@ -9,13 +9,20 @@ window.futuraApi = (function () {
       throw new Error('API_URL não configurado');
     }
     var corpo = JSON.stringify(Object.assign({ acao: acao }, dados || {}));
-    var resposta = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: corpo
-    });
-    if (!resposta.ok) throw new Error('Resposta ' + resposta.status);
-    return resposta.json();
+    var controlo = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var relogio = controlo ? setTimeout(function () { controlo.abort(); }, 50000) : null;
+    try {
+      var resposta = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: corpo,
+        signal: controlo ? controlo.signal : undefined
+      });
+      if (!resposta.ok) throw new Error('Resposta ' + resposta.status);
+      return await resposta.json();
+    } finally {
+      if (relogio) clearTimeout(relogio);
+    }
   }
 
   return {

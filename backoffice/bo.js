@@ -106,7 +106,8 @@
       { id: 'geral', nome: 'Visão geral', corpo: el('div') },
       { id: 'pessoas', nome: 'Pessoas', corpo: el('div') },
       { id: 'sessoes', nome: 'Sessões', corpo: el('div') },
-      { id: 'alojamento', nome: 'Alojamento', corpo: el('div') }
+      { id: 'alojamento', nome: 'Alojamento', corpo: el('div') },
+      { id: 'refeicoes', nome: 'Refeições', corpo: el('div') }
     ];
     var barra = el('div', { class: 'separadores', role: 'tablist' });
     var avisoEl = el('p', { class: 'sucesso', role: 'status' });
@@ -131,7 +132,7 @@
     }
     function carregarListas() {
       aCarregarListas = true;
-      ['pessoas', 'sessoes', 'alojamento'].forEach(function (i) {
+      ['pessoas', 'sessoes', 'alojamento', 'refeicoes'].forEach(function (i) {
         var a = abas.filter(function (x) { return x.id === i; })[0];
         limpar(a.corpo); a.corpo.appendChild(el('p', { class: 'suave' }, 'A carregar a lista…'));
       });
@@ -229,7 +230,8 @@
   function desenharListas(abas, d, ctx) {
     desenharPessoas(abas[1].corpo, d.pessoas, ctx);
     desenharSessoes(abas[2].corpo, d.sessoes);
-    desenharAlojamento(abas[3].corpo, d.alojamento);
+    desenharAlojamento(abas[3].corpo, d.alojamento, d.ocupacao);
+    desenharRefeicoes(abas[4].corpo, d.refeicoes || [], ctx);
   }
 
 
@@ -239,7 +241,7 @@
     pessoa_nao_encontrada: 'Pessoa não encontrada. Atualize a página.', nada_a_validar: 'Esta pessoa já não está por validar.',
     sem_alteracao: 'Já estava assim. Nada foi alterado.', sem_inscricao: 'Esta pessoa não tem inscrição ativa.',
     ja_existe: 'Já existe uma pessoa com este email.', email_invalido: 'O email não parece válido.', nome_invalido: 'Falta o nome.',
-    nivel_invalido: 'Escolha um nível.', email_nao_coincide: 'O email escrito não coincide com o desta pessoa.', tem_inscricao_ativa: 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.', estado_invalido: 'Estado inválido.', interno: 'Algo correu mal. Tente outra vez.'
+    nivel_invalido: 'Escolha um nível.', email_nao_coincide: 'O email escrito não coincide com o desta pessoa.', tem_inscricao_ativa: 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.', estado_invalido: 'Estado inválido.', refeicao_esgotada: 'Esta refeição já está cheia. Não há lugar para confirmar mais pedidos.', sem_pedido: 'Este pedido já foi decidido. Atualize a página.', decisao_invalida: 'Decisão inválida.', interno: 'Algo correu mal. Tente outra vez.'
   };
 
   // Pede confirmação no próprio sítio (dois passos) e só depois faz a ação.
@@ -463,9 +465,17 @@
     desenhar();
   }
 
-  function desenharAlojamento(corpo, lista) {
+  function desenharAlojamento(corpo, lista, ocup) {
     limpar(corpo);
     corpo.appendChild(el('h1', {}, 'Alojamento'));
+    if (ocup && ocup.por_noite) {
+      var noitesOrd = Object.keys(ocup.por_noite).sort();
+      corpo.appendChild(el('h2', {}, 'Quartos por noite'));
+      corpo.appendChild(tabela(['Noite', 'Quartos ocupados', 'Quartos reservados', 'Livres'], noitesOrd.map(function (n) {
+        var usados = ocup.por_noite[n], res = ocup.quartos_reservados || 0;
+        return [dia(n), usados, res || '—', res ? Math.max(0, res - usados) + (usados > res ? ' (excedido em ' + (usados - res) + ')' : '') : '—'];
+      }), [1, 2, 3]));
+    }
     var ordenada = lista.slice().sort(function (a, b) { return (b.pedido_submetido - a.pedido_submetido) || a.nome.localeCompare(b.nome, 'pt'); });
     var euros = function (n) { return n ? n.toFixed(2).replace('.', ',') + ' €' : ''; };
     corpo.appendChild(el('div', { class: 'acoes-lista' }, [
@@ -477,6 +487,54 @@
       return [x.nome, x.instituicao, (NOMES_ESTADO[x.estado] || x.estado) + (x.pedido_submetido ? ' · pedido feito' : ''),
         x.tipo_quarto + (x.partilha_com ? ' (com ' + x.partilha_com + ')' : ''), x.checkin, x.checkout, x.noites || '', euros(x.total), x.pago, x.notas];
     }), [6, 7]));
+  }
+
+  function desenharRefeicoes(corpo, lista, ctx) {
+    limpar(corpo);
+    corpo.appendChild(el('h1', {}, 'Refeições'));
+    if (!lista.length) { corpo.appendChild(el('p', { class: 'suave' }, 'Sem refeições.')); return; }
+    var nomeRef = function (r) { return dia(r.dia) + ' · ' + (r.tipo === 'jantar' ? 'Jantar' : 'Almoço') + ' · ' + (r.local || ''); };
+    var seletor = el('select', { 'aria-label': 'Escolher refeição' }, lista.map(function (r, i) {
+      return el('option', { value: String(i) }, nomeRef(r) + ' (' + r.confirmadas + (r.lotacao !== null ? '/' + r.lotacao : '') + (r.pedidos.length ? ' · ' + r.pedidos.length + ' pedidos' : '') + ')');
+    }));
+    var caixa = el('div');
+    function desenhar() {
+      var r = lista[Number(seletor.value)]; limpar(caixa);
+      var livres = r.lotacao === null ? 'sem limite' : Math.max(0, r.lotacao - r.confirmadas);
+      var reservaPorUsar = Math.max(0, r.reserva_nivel_2 - r.confirmadas_nivel_2);
+      caixa.appendChild(el('div', { class: 'cartoes' }, [
+        cartao(r.confirmadas, 'confirmadas' + (r.lotacao !== null ? ' (de ' + r.lotacao + ')' : '')),
+        cartao(livres, 'lugares livres'),
+        cartao(reservaPorUsar, 'reservados ao nível 2, por usar'),
+        cartao(r.pedidos.length, 'pedidos por confirmar')
+      ]));
+      if (r.lotacao === null) caixa.appendChild(el('p', { class: 'suave' }, 'Esta refeição não tem limite. Para definir um, preencha a coluna "lotacao" (e "reserva_nivel_2") na aba "refeicoes" da folha e carregue em Atualizar.'));
+      caixa.appendChild(el('h2', {}, 'Pedidos por confirmar (' + r.pedidos.length + ')'));
+      if (!r.pedidos.length) caixa.appendChild(el('p', { class: 'suave' }, 'Nenhum pedido.'));
+      r.pedidos.forEach(function (x) {
+        var cx = el('div');
+        var linha = el('div', { class: 'acao-bloco' }, [
+          el('p', {}, x.nome + (x.instituicao ? ' · ' + x.instituicao : '') + ' · ' + x.email)]);
+        if (ctx.papel === 'admin') {
+          linha.appendChild(el('div', { class: 'acoes' }, [
+            el('button', { type: 'button', class: 'botao', onclick: function () {
+              comConfirmacao(cx, 'Confirmar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'confirmar' }, x.nome + ': refeição confirmada.'); });
+            } }, 'Confirmar'),
+            el('button', { type: 'button', class: 'botao-texto perigo', onclick: function () {
+              comConfirmacao(cx, 'Recusar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'recusar' }, x.nome + ': refeição recusada.'); });
+            } }, 'Recusar')]));
+        }
+        linha.appendChild(cx);
+        caixa.appendChild(linha);
+      });
+      caixa.appendChild(el('div', { class: 'acoes-lista' }, [el('h2', {}, 'Confirmadas (' + r.confirmadas + ')'),
+        botaoCsv('futura_' + r.id + '.csv', ['Nome', 'Email', 'Instituição', 'Nível'], function () { return r.pessoas_confirmadas.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel]; }); })]));
+      caixa.appendChild(r.pessoas_confirmadas.length ? tabela(['Nome', 'Email', 'Instituição', 'Nível'], r.pessoas_confirmadas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); })
+        .map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel]; }), [3]) : el('p', { class: 'suave' }, 'Ainda ninguém.'));
+    }
+    seletor.addEventListener('change', desenhar);
+    corpo.appendChild(seletor); corpo.appendChild(caixa);
+    desenhar();
   }
 
   /* ---------- arranque ---------- */

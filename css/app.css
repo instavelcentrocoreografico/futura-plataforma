@@ -195,3 +195,6 @@ fieldset.dia-opcoes { border: 1px solid var(--cinza); border-radius: 12px; margi
 .resumo-dia { margin: 14px 0 4px; color: var(--titulo); font-size: 1rem; border-left: 4px solid var(--destaque); padding-left: 10px; }
 .lista-resumo strong { color: var(--titulo); font-variant-numeric: tabular-nums; }
 .resumo-dia::first-letter { text-transform: uppercase; }
+
+.declaracao { white-space: pre-line; }
+.nota-refeicao { white-space: pre-line; }
