@@ -516,11 +516,13 @@
     if (!refeicoes.length) { painel.appendChild(el('p', { classe: 'suave', texto: t('semRefeicoesDia') })); return; }
     var nivel3 = dados.pessoa && dados.pessoa.nivel === 3;
     painel.appendChild(el('p', { classe: 'suave', texto: refeicoesFechadas() ? t('refeicoesFechadas') : t('refeicoesNota') }));
+    painel.appendChild(el('p', { classe: 'suave', texto: t('refeicoesLocal') }));
+    if (segundaPessoaRefeicoes()) painel.appendChild(el('p', { classe: 'suave', texto: t('acompanhanteNota') }));
     if (nivel3 && !refeicoesFechadas()) painel.appendChild(el('p', { classe: 'suave', texto: t('refeicoesNotaN3') }));
     refeicoes.forEach(function (r) {
       var hora = r.fim ? r.inicio + ' – ' + r.fim : r.inicio;
       var nome = r.tipo === 'jantar' ? t('jantar') : t('almoco');
-      var linha = [formatarDia(r.dia), hora, r.local].filter(String).join(' · ');
+      var linha = [formatarDia(r.dia), hora, String(r.local || '').split(',')[0]].filter(String).join(' · ');
       var id = 'r-' + r.id;
       var cx = el('input', { type: 'checkbox', id: id });
       cx.checked = rasc.refeicoes.indexOf(r.id) > -1;
@@ -560,7 +562,6 @@
       }
       painel.appendChild(el('article', { classe: 'sessao' + (cx.checked ? ' marcada' : '') }, partes));
     });
-    if (segundaPessoaRefeicoes()) painel.appendChild(el('p', { classe: 'suave', texto: t('acompanhanteNota') }));
     painel.appendChild(campoTexto('f-restr', t('restricoes'), 'restricoes', { multilinha: true, max: 300 }));
   }
 
