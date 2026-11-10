@@ -514,23 +514,23 @@
       r.pedidos.forEach(function (x) {
         var cx = el('div');
         var linha = el('div', { class: 'acao-bloco' }, [
-          el('p', {}, x.nome + (x.instituicao ? ' · ' + x.instituicao : '') + ' · ' + x.email)]);
+          el('p', {}, (x.acompanhante ? 'Segunda pessoa de ' : '') + x.nome + (x.instituicao ? ' · ' + x.instituicao : '') + ' · ' + x.email)]);
         if (ctx.papel === 'admin') {
           linha.appendChild(el('div', { class: 'acoes' }, [
             el('button', { type: 'button', class: 'botao', onclick: function () {
-              comConfirmacao(cx, 'Confirmar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'confirmar' }, x.nome + ': refeição confirmada.'); });
+              comConfirmacao(cx, 'Confirmar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'confirmar', acompanhante: !!x.acompanhante }, x.nome + ': refeição confirmada.'); });
             } }, 'Confirmar'),
             el('button', { type: 'button', class: 'botao-texto perigo', onclick: function () {
-              comConfirmacao(cx, 'Recusar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'recusar' }, x.nome + ': refeição recusada.'); });
+              comConfirmacao(cx, 'Recusar a refeição de ' + x.nome + '? Ela recebe um email.', function () { return executar(ctx, 'refeicao_decidir', { pessoa_id: x.id, refeicao_id: r.id, decisao: 'recusar', acompanhante: !!x.acompanhante }, x.nome + ': refeição recusada.'); });
             } }, 'Recusar')]));
         }
         linha.appendChild(cx);
         caixa.appendChild(linha);
       });
       caixa.appendChild(el('div', { class: 'acoes-lista' }, [el('h2', {}, 'Confirmadas (' + r.confirmadas + ')'),
-        botaoCsv('futura_' + r.id + '.csv', ['Nome', 'Email', 'Instituição', 'Nível'], function () { return r.pessoas_confirmadas.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel]; }); })]));
-      caixa.appendChild(r.pessoas_confirmadas.length ? tabela(['Nome', 'Email', 'Instituição', 'Nível'], r.pessoas_confirmadas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); })
-        .map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel]; }), [3]) : el('p', { class: 'suave' }, 'Ainda ninguém.'));
+        botaoCsv('futura_' + r.id + '.csv', ['Nome', 'Email', 'Instituição', 'Nível', 'Segunda pessoa'], function () { return r.pessoas_confirmadas.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.acompanhante ? 'sim' : '']; }); })]));
+      caixa.appendChild(r.pessoas_confirmadas.length ? tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Segunda pessoa'], r.pessoas_confirmadas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); })
+        .map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.acompanhante ? 'sim' : '']; }), [3]) : el('p', { class: 'suave' }, 'Ainda ninguém.'));
     }
     seletor.addEventListener('change', desenhar);
     corpo.appendChild(seletor); corpo.appendChild(caixa);
