@@ -291,7 +291,8 @@
   }
 
   var SALAS_EN = { 'Cine-Estúdio': 'Cine-Studio', 'Café-Teatro': 'Café-Teatro', 'Sala-Estúdio': 'Studio', 'Grande Auditório': 'Stage Auditorium',
-    'Estúdio 1': 'Studio 1', 'Estúdio 2': 'Studio 2', 'Foyer': 'Foyer', 'Planetário': 'Planetarium', 'Sala de ensaios': 'Rehearsal Room' };
+    'Estúdio 1': 'Studio 1', 'Estúdio 2': 'Studio 2', 'Foyer': 'Foyer', 'Planetário': 'Planetarium', 'Sala de ensaios': 'Rehearsal Room',
+    'Foyer e Estúdio 2': 'Foyer and Studio 2', 'Grande Auditório e Foyer': 'Stage Auditorium and Foyer' };
   function salaNome(sala) {
     if (lang !== 'en') return sala;
     return String(sala).replace(/\s*\(a confirmar\)/i, ' (to be confirmed)').replace(/^[^(]*?(?=\s*\(|$)/, function (n) { return SALAS_EN[n.trim()] || n; });
