@@ -88,8 +88,8 @@
     return m ? m[1] + '/12' : String(d || '');
   }
   var NOMES_ESTADO = {
-    pedido: 'Pedido (a pedir estadia)', oferecido: 'Oferecido', autorizado: 'Autorizado', nao_autorizado: 'Não autorizado',
-    nao_necessita: 'Não necessita', a_avaliar: 'A avaliar', caso_especial: 'Caso especial', por_classificar: 'Por classificar', '(vazio)': 'Sem estado'
+    pedido: 'Com alojamento', oferecido: 'Com alojamento', autorizado: 'Com alojamento', nao_autorizado: 'Não autorizado',
+    nao_necessita: 'Sem alojamento', a_avaliar: 'A avaliar', caso_especial: 'Caso especial', por_classificar: 'Por classificar', '(vazio)': 'Sem estado'
   };
 
   function ecraPainel(dados) {
@@ -306,7 +306,7 @@
           comConfirmacao(cn, 'Mudar ' + x.nome + ' de ' + NIV[x.nivel] + ' para ' + NIV[n] + '? Isto muda quando pode inscrever-se e o que lhe é permitido.', function () { return executar(ctx, 'mudar_nivel', { pessoa_id: x.id, nivel: n }, x.nome + ': ' + NIV[n] + '.'); });
         } }, 'Mudar nível')]), cn]));
 
-      var estados = ['pedido', 'oferecido', 'autorizado', 'nao_autorizado', 'nao_necessita', 'a_avaliar', 'caso_especial', 'por_classificar'];
+      var estados = ['pedido', 'nao_necessita', 'por_classificar', 'nao_autorizado'];
       var selAloj = el('select', { 'aria-label': 'Estado do alojamento' }, [el('option', { value: '' }, 'Escolher estado…')].concat(estados.map(function (e) { return el('option', { value: e }, NOMES_ESTADO[e]); })));
       var ca = el('div');
       secoes.push(el('div', { class: 'acao-bloco' }, [el('label', {}, 'Estado do alojamento'), el('div', { class: 'acoes' }, [selAloj,
@@ -381,7 +381,7 @@
   function desenharPessoas(corpo, pessoas, ctx) {
     limpar(corpo);
     var painel = el('div');
-    var filtro = { texto: '', nivel: 0, so: false };
+    var filtro = { texto: '', nivel: 0, so: false, porClass: false };
     var busca = el('input', { type: 'text', placeholder: 'Procurar por nome, email ou instituição', 'aria-label': 'Procurar' });
     var contagem = el('p', { class: 'nota-atualizado' });
     var caixa = el('div');
@@ -398,6 +398,7 @@
         chips.appendChild(chip(n[1], function () { filtro.nivel = n[0]; }, filtro.nivel === n[0]));
       });
       chips.appendChild(chip('Só inscritas', function () { filtro.so = !filtro.so; }, filtro.so));
+      chips.appendChild(chip('Alojamento por classificar', function () { filtro.porClass = !filtro.porClass; }, filtro.porClass));
     }
     function desenhar() {
       desenharChips();
@@ -405,16 +406,17 @@
       visiveis = pessoas.filter(function (x) {
         if (filtro.nivel && x.nivel !== filtro.nivel) return false;
         if (filtro.so && x.inscricao !== 'confirmada') return false;
+        if (filtro.porClass && x.alojamento !== 'por_classificar') return false;
         return !t || semAcentos(x.nome + ' ' + x.email + ' ' + x.instituicao).indexOf(t) > -1;
       }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
       contagem.textContent = visiveis.length + ' de ' + pessoas.length + ' pessoas';
       limpar(caixa);
-      caixa.appendChild(tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Inscrição', 'Dias', 'Sessões', 'Notas', ''], visiveis.map(function (x) {
+      caixa.appendChild(tabela(['Nome', 'Email', 'Instituição', 'Nível', 'Inscrição', 'Alojamento', 'Dias', 'Sessões', 'Notas', ''], visiveis.map(function (x) {
         var notas = [ESTADO_VAL[x.estado_validacao] || x.estado_validacao, x.peca_declarada ? 'Peça: ' + x.peca_declarada : '',
           x.restricoes ? 'Alimentação: ' + x.restricoes : '', x.necessidades ? 'Necessidades: ' + x.necessidades : ''].filter(Boolean).join(' · ');
         var abrir = el('button', { type: 'button', class: 'botao-texto', 'aria-label': 'Ações para ' + x.nome, onclick: function () { abrirPainel(x); } }, 'Ações');
-        return [x.nome, x.email, x.instituicao, x.nivel, ESTADO_INSC[x.inscricao] || x.inscricao, x.dias, x.sessoes, notas, { no: abrir }];
-      }), [3, 6]));
+        return [x.nome, x.email, x.instituicao, x.nivel, ESTADO_INSC[x.inscricao] || x.inscricao, NOMES_ESTADO[x.alojamento] || x.alojamento || '', x.dias, x.sessoes, notas, { no: abrir }];
+      }), [3, 7]));
     }
     function abrirPainel(x) {
       limpar(painel);
@@ -480,8 +482,8 @@
     var euros = function (n) { return n ? n.toFixed(2).replace('.', ',') + ' €' : ''; };
     corpo.appendChild(el('div', { class: 'acoes-lista' }, [
       el('p', { class: 'nota-atualizado' }, ordenada.length + ' pessoas com estado ou pedido de alojamento'),
-      botaoCsv('futura_alojamento.csv', ['Nome', 'Email', 'Instituição', 'Nível', 'Estado', 'Pedido submetido', 'Viagem oferecida', 'Quarto', 'Partilha com', 'Entrada', 'Saída', 'Noites', 'Excedente', 'Taxa turística', 'Total', 'Pago', 'Notas'],
-        function () { return ordenada.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.estado, x.pedido_submetido ? 'sim' : 'não', x.viagem_oferecida, x.tipo_quarto, x.partilha_com, x.checkin, x.checkout, x.noites, x.excedente, x.taxa, x.total, x.pago, x.notas]; }); })
+      botaoCsv('futura_alojamento.csv', ['Nome', 'Email', 'Instituição', 'Nível', 'Estado', 'Pedido submetido', 'Quarto', 'Partilha com', 'Entrada', 'Saída', 'Noites', 'Excedente', 'Taxa turística', 'Total', 'Pago', 'Notas'],
+        function () { return ordenada.map(function (x) { return [x.nome, x.email, x.instituicao, x.nivel, x.estado, x.pedido_submetido ? 'sim' : 'não', x.tipo_quarto, x.partilha_com, x.checkin, x.checkout, x.noites, x.excedente, x.taxa, x.total, x.pago, x.notas]; }); })
     ]));
     corpo.appendChild(tabela(['Nome', 'Instituição', 'Estado', 'Quarto', 'Entrada', 'Saída', 'Noites', 'Total', 'Pago', 'Notas'], ordenada.map(function (x) {
       return [x.nome, x.instituicao, (NOMES_ESTADO[x.estado] || x.estado) + (x.pedido_submetido ? ' · pedido feito' : ''),
