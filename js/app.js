@@ -156,7 +156,7 @@
     var a = dados && dados.alojamento;
     var n1 = dados && dados.pessoa && dados.pessoa.nivel === 1;
     var comAloj = a && (a.disponivel !== 'nao' || a.pedido) && !(n1 && !a.aberto);
-    var comRef = !(n1 && refeicoesFechadas());
+    var comRef = !(n1 && refeicoesFechadas()) && dados.programa.refeicoes.some(function (r) { return r.acesso; });
     var o = ['presenca', 'programacao'];
     if (comAloj) o.push('alojamento');
     if (comRef) o.push('refeicoes');

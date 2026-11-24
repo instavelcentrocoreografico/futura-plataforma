@@ -241,7 +241,7 @@
     pessoa_nao_encontrada: 'Pessoa não encontrada. Atualize a página.', nada_a_validar: 'Esta pessoa já não está por validar.',
     sem_alteracao: 'Já estava assim. Nada foi alterado.', sem_inscricao: 'Esta pessoa não tem inscrição ativa.',
     ja_existe: 'Já existe uma pessoa com este email.', email_invalido: 'O email não parece válido.', nome_invalido: 'Falta o nome.',
-    nivel_invalido: 'Escolha um nível.', email_nao_coincide: 'O email escrito não coincide com o desta pessoa.', tem_inscricao_ativa: 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.', estado_invalido: 'Estado inválido.', refeicao_esgotada: 'Esta refeição já está cheia. Não há lugar para confirmar mais pedidos.', sem_pedido: 'Este pedido já foi decidido. Atualize a página.', decisao_invalida: 'Decisão inválida.', interno: 'Algo correu mal. Tente outra vez.'
+    nivel_invalido: 'Escolha um nível.', email_nao_coincide: 'O email escrito não coincide com o desta pessoa.', sem_inscricao_sessao: 'Esta pessoa já não está inscrita nesta sessão. Atualize a página.', tem_inscricao_ativa: 'Esta pessoa ainda tem inscrição ativa. Cancele primeiro a inscrição.', estado_invalido: 'Estado inválido.', refeicao_esgotada: 'Esta refeição já está cheia. Não há lugar para confirmar mais pedidos.', sem_pedido: 'Este pedido já foi decidido. Atualize a página.', decisao_invalida: 'Decisão inválida.', interno: 'Algo correu mal. Tente outra vez.'
   };
 
   // Pede confirmação no próprio sítio (dois passos) e só depois faz a ação.
@@ -316,6 +316,15 @@
             function () { return executar(ctx, 'alojamento_estado', { pessoa_id: x.id, estado: selAloj.value }, x.nome + ': alojamento "' + NOMES_ESTADO[selAloj.value] + '".'); });
         } }, 'Guardar')]), ca]));
 
+      (x.sessoes_inscritas || []).forEach(function (se) {
+        var cs = el('div');
+        secoes.push(el('div', { class: 'acao-bloco' }, [
+          el('p', {}, 'Sessão: ' + se.titulo + (se.dia ? ' (' + se.dia + (se.inicio ? ', ' + se.inicio : '') + ')' : '') + (se.espera ? ' – lista de espera' : '')),
+          el('button', { type: 'button', class: 'botao-texto perigo', onclick: function () {
+            comConfirmacao(cs, 'Cancelar só a sessão "' + se.titulo + '" de ' + x.nome + '? ' + (se.espera ? 'Sai da lista de espera.' : 'Liberta o lugar e a lista de espera avança (essas pessoas recebem email). ') + 'As restantes sessões mantêm-se e a pessoa não recebe email.',
+              function () { return executar(ctx, 'cancelar_sessao', { pessoa_id: x.id, sessao_id: se.id }, x.nome + ': sessão "' + se.titulo + '" cancelada.'); });
+          } }, 'Cancelar esta sessão'), cs]));
+      });
       if (x.inscricao === 'confirmada') {
         var cc = el('div');
         secoes.push(el('div', { class: 'acao-bloco' }, [
